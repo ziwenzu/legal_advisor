@@ -1,0 +1,14 @@
+.DS_Store
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+data/
+output/
+_archive/
