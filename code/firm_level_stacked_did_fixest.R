@@ -6,9 +6,14 @@ suppressPackageStartupMessages({
 })
 
 root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
+default_firm_input <- file.path(root_dir, "data", "output data", "firm_level.csv")
+internal_firm_input <- file.path(root_dir, "data", "output data", "firm_level_structural_repair_candidate.csv")
+if (file.exists(internal_firm_input)) {
+  default_firm_input <- internal_firm_input
+}
 input_file <- Sys.getenv(
   "FIRM_LEVEL_INPUT_FILE",
-  unset = file.path(root_dir, "data", "output data", "firm_level.csv")
+  unset = default_firm_input
 )
 figure_dir <- file.path(root_dir, "output", "figures")
 table_dir <- file.path(root_dir, "output", "tables")
@@ -68,6 +73,10 @@ client_mix_pre_expr <- function(enterprise_p, personal_p) {
 
 read_firm_panel <- function(path) {
   dt <- fread(path)
+
+  if ("imputed_balance_row" %in% names(dt)) {
+    dt <- dt[imputed_balance_row == 0]
+  }
 
   dt[, stack_firm_fe := sprintf("%s__%s", stack_id, firm_id)]
   dt[, stack_year_fe := sprintf("%s__%s", stack_id, year)]
@@ -375,6 +384,7 @@ build_main_table <- function(results_list, file_path) {
       sprintf("The coefficient of interest is Winner $\\times$ Post, where treated firms are procurement winners and controls are %s.", control_note),
       "All specifications absorb stack-by-firm fixed effects and stack-by-year fixed effects.",
       "Columns 2 and 4 are restricted to firm-years with positive decisive cases and positive civil cases, respectively.",
+      "When `imputed_balance_row` is present, synthetic balancing rows are excluded from estimation.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -432,6 +442,7 @@ build_mechanism_table <- function(results_list, file_path) {
       "\\item Note: This table examines whether procurement winners expand by attracting more enterprise-side civil cases.",
       "The coefficient of interest is Winner $\\times$ Post.",
       "All specifications absorb stack-by-firm fixed effects and stack-by-year fixed effects.",
+      "When `imputed_balance_row` is present, synthetic balancing rows are excluded from estimation.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

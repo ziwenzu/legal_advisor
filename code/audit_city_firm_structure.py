@@ -10,6 +10,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 CITY_FILE = ROOT / "data" / "output data" / "city_year_panel.csv"
+CITY_FULL_FILE = ROOT / "data" / "output data" / "city_year_panel_full_fixed_20260416.csv"
 FIRM_FILE = ROOT / "data" / "output data" / "firm_level.csv"
 CASE_FILE = ROOT / "data" / "output data" / "case_level.csv"
 OUT_FILE = ROOT / "data" / "output data" / "city_firm_structure_reaudit_20260416.md"
@@ -36,6 +37,33 @@ def markdown_table(headers: list[str], rows: list[list[str]]) -> str:
     for row in rows:
         out.append("| " + " | ".join(row) + " |")
     return "\n".join(out)
+
+
+def read_city_panel_for_audit() -> pd.DataFrame:
+    city = pd.read_csv(CITY_FILE)
+    required = {
+        "government_win_n",
+        "population_10k",
+        "gdp_100m",
+        "registered_lawyers_n",
+        "court_caseload_n",
+        "petition_share",
+        "defense_counsel_share",
+        "fiscal_expenditure_per_capita",
+    }
+
+    if required.issubset(city.columns):
+        return city
+
+    if CITY_FULL_FILE.exists():
+        return pd.read_csv(CITY_FULL_FILE)
+
+    missing = sorted(required.difference(city.columns))
+    raise SystemExit(
+        "The slim city_year_panel.csv no longer contains the fields needed for a "
+        f"full structure audit: {', '.join(missing)}. "
+        f"Expected fallback file not found: {CITY_FULL_FILE}"
+    )
 
 
 def build_city_section(city: pd.DataFrame) -> list[str]:
@@ -271,7 +299,7 @@ def build_firm_section(firm: pd.DataFrame, case_agg: pd.DataFrame) -> list[str]:
 
 
 def main() -> None:
-    city = pd.read_csv(CITY_FILE)
+    city = read_city_panel_for_audit()
     firm = pd.read_csv(FIRM_FILE)
     case = pd.read_csv(
         CASE_FILE,

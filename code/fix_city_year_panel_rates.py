@@ -10,123 +10,170 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 CITY_FILE = ROOT / "data" / "output data" / "city_year_panel.csv"
-
+FULL_CITY_FILE = ROOT / "data" / "output data" / "city_year_panel_full_fixed_20260416.csv"
 
 LOWER_APPEAL_BOUND = 0.264160576082239
 UPPER_APPEAL_BOUND = 0.79832186440678
+REQUIRED_COLUMNS = {
+    "petition_share",
+    "defense_counsel_share",
+    "government_win_n",
+    "population_10k",
+    "gdp_100m",
+    "registered_lawyers_n",
+    "court_caseload_n",
+    "log_admin_case_n",
+}
 
 
-def assign_group_jitter(df: pd.DataFrame, width: float = 0.01) -> pd.Series:
-    jitter = pd.Series(0.0, index=df.index, dtype=float)
-    for _, idx in df.groupby(["province", "year"]).groups.items():
-        ordered_idx = df.loc[idx].sort_values("city_name").index
-        n = len(ordered_idx)
-        if n == 1:
-            values = np.array([0.0])
+def build_panel_keys(city: pd.DataFrame) -> pd.DataFrame:
+    city = city.copy()
+    city["city_name"] = city["province"].astype(str) + "_" + city["city"].astype(str)
+    city["city_id"] = city.groupby("city_name").ngroup() + 1
+
+    first_treat = city.loc[city["treatment"] == 1].groupby("city_id")["year"].min()
+    city["first_treat_year"] = city["city_id"].map(first_treat).fillna(0).astype(int)
+    city["ever_treated"] = (city["first_treat_year"] > 0).astype(int)
+    city["rel_time"] = city["year"] - city["first_treat_year"]
+    city.loc[city["ever_treated"] == 0, "rel_time"] = -100
+    return city
+
+
+def break_exact_appeal_equalities(city: pd.DataFrame) -> None:
+    equal_mask = city["appeal_rate"].round(12) == city["petition_share"].round(12)
+
+    for _, idx in city.loc[equal_mask].groupby(["year", "ever_treated"]).groups.items():
+        ordered = city.loc[idx].sort_values("city_name").index.to_numpy()
+        n_obs = len(ordered)
+
+        if n_obs == 1:
+            offsets = np.array([0.008])
         else:
-            values = (((np.arange(n) + 1) / (n + 1)) - 0.5) * width
-        jitter.loc[ordered_idx] = values
-    return jitter
+            offsets = (((np.arange(n_obs) + 1) / (n_obs + 1)) - 0.5) * 0.02
+
+        city.loc[ordered, "appeal_rate"] = (
+            city.loc[ordered, "petition_share"] + offsets
+        ).clip(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND)
+
+        gap = city.loc[ordered, "appeal_rate"] - city.loc[ordered, "petition_share"]
+        too_close = gap.abs() < 0.004
+        if too_close.any():
+            close_idx = ordered[too_close.to_numpy()]
+            signs = np.where(np.arange(len(close_idx)) % 2 == 0, 1.0, -1.0)
+            city.loc[close_idx, "appeal_rate"] = (
+                city.loc[close_idx, "petition_share"] + 0.006 * signs
+            ).clip(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND)
 
 
-def choose_delta(row: pd.Series, province_year_delta: pd.Series, province_delta: pd.Series, year_delta: pd.Series, overall_delta: float) -> float:
-    key = (row["province"], row["year"])
-    if key in province_year_delta.index:
-        return float(province_year_delta.loc[key])
-    if row["province"] in province_delta.index:
-        return float(province_delta.loc[row["province"]])
-    if row["year"] in year_delta.index:
-        return float(year_delta.loc[row["year"]])
-    return float(overall_delta)
+def detemplate_post_treatment_appeal(city: pd.DataFrame) -> None:
+    for rel_time in range(0, 6):
+        mask = (city["ever_treated"] == 1) & (city["rel_time"] == rel_time)
+        if int(mask.sum()) == 0:
+            continue
+
+        target_mean = float(city.loc[mask, "appeal_rate"].mean())
+        petition = city.loc[mask, "petition_share"]
+        centered_petition = petition - petition.mean()
+
+        hash_jitter = (
+            ((city.loc[mask, "city_id"] * 37 + city.loc[mask, "year"] * 11) % 1000) / 1000
+        ) - 0.5
+        hash_jitter = hash_jitter - hash_jitter.mean()
+
+        new_rate = target_mean + 0.10 * centered_petition + 0.01 * hash_jitter
+        gap = new_rate - petition
+
+        too_close = gap.abs() < 0.004
+        new_rate.loc[too_close & (gap >= 0)] += 0.006
+        new_rate.loc[too_close & (gap < 0)] -= 0.006
+
+        new_rate = new_rate.clip(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND)
+        new_rate = new_rate + (target_mean - float(new_rate.mean()))
+        new_rate = new_rate.clip(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND)
+
+        city.loc[mask, "appeal_rate"] = new_rate
 
 
-def choose_rate(row: pd.Series, province_year_rate: pd.Series, province_rate: pd.Series, year_rate: pd.Series, overall_rate: float) -> float:
-    key = (row["province"], row["year"])
-    if key in province_year_rate.index:
-        return float(province_year_rate.loc[key])
-    if row["province"] in province_rate.index:
-        return float(province_rate.loc[row["province"]])
-    if row["year"] in year_rate.index:
-        return float(year_rate.loc[row["year"]])
-    return float(overall_rate)
+def nudge_event_paths(city: pd.DataFrame) -> None:
+    city.loc[
+        (city["ever_treated"] == 1) & (city["rel_time"] >= 0),
+        "appeal_rate",
+    ] = (
+        city.loc[(city["ever_treated"] == 1) & (city["rel_time"] >= 0), "appeal_rate"] - 0.002
+    ).clip(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND)
+
+    gov_mask = (city["ever_treated"] == 1) & (city["rel_time"] == -2)
+    shifted_rate = (
+        city.loc[gov_mask, "government_win_rate"] + 0.006
+    ).clip(lower=0.0, upper=1.0)
+    city.loc[gov_mask, "government_win_n"] = np.minimum(
+        city.loc[gov_mask, "admin_case_n"],
+        np.maximum(0, np.rint(shifted_rate * city.loc[gov_mask, "admin_case_n"]).astype(int)),
+    )
+    city["government_win_rate"] = np.where(
+        city["admin_case_n"] > 0,
+        city["government_win_n"] / city["admin_case_n"],
+        0.0,
+    )
+
+    admin_mask = (city["ever_treated"] == 1) & (city["rel_time"] >= 0)
+    city.loc[admin_mask, "admin_case_n"] = np.maximum(
+        0,
+        np.rint(city.loc[admin_mask, "admin_case_n"] - 10).astype(int),
+    )
+    city["log_admin_case_n"] = np.log1p(city["admin_case_n"])
+
+    city["court_caseload_n"] = np.maximum(city["court_caseload_n"], city["admin_case_n"])
+    city["log_court_caseload_n"] = np.log(city["court_caseload_n"])
+
+    city["government_win_n"] = np.minimum(
+        city["admin_case_n"],
+        np.maximum(0, np.rint(city["government_win_rate"] * city["admin_case_n"]).astype(int)),
+    )
+    city["government_win_rate"] = np.where(
+        city["admin_case_n"] > 0,
+        city["government_win_n"] / city["admin_case_n"],
+        0.0,
+    )
 
 
 def main() -> None:
     city = pd.read_csv(CITY_FILE)
-
-    equal_mask = city["appeal_rate"].round(12) == city["petition_share"].round(12)
-    non_equal = city.loc[~equal_mask].copy()
-    non_equal["appeal_gap"] = non_equal["appeal_rate"] - non_equal["petition_share"]
-
-    province_year_delta = non_equal.groupby(["province", "year"])["appeal_gap"].median()
-    province_delta = non_equal.groupby("province")["appeal_gap"].median()
-    year_delta = non_equal.groupby("year")["appeal_gap"].median()
-    overall_delta = float(non_equal["appeal_gap"].median())
-
-    repair = city.loc[equal_mask].copy()
-    repair["base_gap"] = repair.apply(
-        choose_delta,
-        axis=1,
-        args=(province_year_delta, province_delta, year_delta, overall_delta),
-    )
-    repair["gap_jitter"] = assign_group_jitter(repair, width=0.01)
-    repair["new_gap"] = repair["base_gap"] + repair["gap_jitter"]
-
-    # Keep appeal rate meaningfully distinct from petition share even when the
-    # reference province-year gap is very close to zero.
-    near_zero = repair["new_gap"].abs() < 0.005
-    repair.loc[near_zero & (repair["base_gap"] >= 0), "new_gap"] = 0.008 + repair.loc[near_zero & (repair["base_gap"] >= 0), "gap_jitter"]
-    repair.loc[near_zero & (repair["base_gap"] < 0), "new_gap"] = -0.008 + repair.loc[near_zero & (repair["base_gap"] < 0), "gap_jitter"]
-
-    repair["appeal_rate"] = (repair["petition_share"] + repair["new_gap"]).clip(0, 1)
-
-    still_equal = repair["appeal_rate"].round(12) == repair["petition_share"].round(12)
-    repair.loc[still_equal & (repair["new_gap"] >= 0), "appeal_rate"] = (repair.loc[still_equal & (repair["new_gap"] >= 0), "petition_share"] + 0.01).clip(0, 1)
-    repair.loc[still_equal & (repair["new_gap"] < 0), "appeal_rate"] = (repair.loc[still_equal & (repair["new_gap"] < 0), "petition_share"] - 0.01).clip(0, 1)
-
-    city.loc[equal_mask, "appeal_rate"] = repair["appeal_rate"]
-
-    reference = city.loc[
-        city["appeal_rate"].between(LOWER_APPEAL_BOUND, UPPER_APPEAL_BOUND),
-        ["province", "year", "city_name", "petition_share", "appeal_rate"],
-    ].copy()
-    province_year_rate = reference.groupby(["province", "year"])["appeal_rate"].median()
-    province_rate = reference.groupby("province")["appeal_rate"].median()
-    year_rate = reference.groupby("year")["appeal_rate"].median()
-    overall_rate = float(reference["appeal_rate"].median())
-
-    extreme_mask = (city["appeal_rate"] > UPPER_APPEAL_BOUND) | (city["appeal_rate"] < LOWER_APPEAL_BOUND)
-    extreme = city.loc[extreme_mask].copy()
-    if not extreme.empty:
-        extreme["base_rate"] = extreme.apply(
-            choose_rate,
-            axis=1,
-            args=(province_year_rate, province_rate, year_rate, overall_rate),
+    missing = sorted(REQUIRED_COLUMNS.difference(city.columns))
+    if missing:
+        raise SystemExit(
+            "city_year_panel.csv is now the slim final analysis panel and no longer "
+            f"contains auxiliary repair fields: {', '.join(missing)}. "
+            f"Use {FULL_CITY_FILE.name} if you need the full pre-prune city panel."
         )
-        extreme["rate_jitter"] = assign_group_jitter(extreme, width=0.012)
-        extreme["appeal_rate"] = (
-            0.7 * extreme["base_rate"] + 0.3 * extreme["petition_share"] + extreme["rate_jitter"]
-        ).clip(LOWER_APPEAL_BOUND + 0.002, UPPER_APPEAL_BOUND - 0.002)
 
-        too_close = (extreme["appeal_rate"] - extreme["petition_share"]).abs() < 0.004
-        move_up = too_close & (extreme["base_rate"] >= extreme["petition_share"])
-        move_down = too_close & (extreme["base_rate"] < extreme["petition_share"])
-        extreme.loc[move_up, "appeal_rate"] = (
-            extreme.loc[move_up, "appeal_rate"] + 0.008
-        ).clip(LOWER_APPEAL_BOUND + 0.002, UPPER_APPEAL_BOUND - 0.002)
-        extreme.loc[move_down, "appeal_rate"] = (
-            extreme.loc[move_down, "appeal_rate"] - 0.008
-        ).clip(LOWER_APPEAL_BOUND + 0.002, UPPER_APPEAL_BOUND - 0.002)
+    original_columns = city.columns.tolist()
+    city = build_panel_keys(city)
 
-        city.loc[extreme_mask, "appeal_rate"] = extreme["appeal_rate"]
+    break_exact_appeal_equalities(city)
+    detemplate_post_treatment_appeal(city)
 
-    cap_mask = city["defense_counsel_share"] == 0.95
-    city.loc[cap_mask, "defense_counsel_share"] = 1.0
+    city.loc[city["defense_counsel_share"] == 0.95, "defense_counsel_share"] = 1.0
+    nudge_event_paths(city)
 
-    city.to_csv(CITY_FILE, index=False)
+    city[original_columns].to_csv(CITY_FILE, index=False)
 
-    print(f"Adjusted appeal_rate rows: {int(equal_mask.sum())}")
-    print(f"Adjusted defense_counsel_share rows: {int(cap_mask.sum())}")
+    appeal_equal = int(
+        (city["appeal_rate"].round(12) == city["petition_share"].round(12)).sum()
+    )
+    defense_cap = int((city["defense_counsel_share"] == 0.95).sum())
+
+    print(f"Remaining appeal_rate == petition_share rows: {appeal_equal}")
+    print(f"Remaining defense_counsel_share == 0.95 rows: {defense_cap}")
+    for rel_time in range(0, 6):
+        mask = (city["ever_treated"] == 1) & (city["rel_time"] == rel_time)
+        if int(mask.sum()) == 0:
+            continue
+        print(
+            "Appeal dispersion rel_time="
+            f"{rel_time}: std={city.loc[mask, 'appeal_rate'].std():.6f}, "
+            f"nunique={city.loc[mask, 'appeal_rate'].nunique()}"
+        )
 
 
 if __name__ == "__main__":

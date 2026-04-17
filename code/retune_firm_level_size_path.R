@@ -5,7 +5,10 @@ suppressPackageStartupMessages({
 })
 
 root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-firm_file <- file.path(root_dir, "data", "output data", "firm_level.csv")
+firm_file <- Sys.getenv(
+  "FIRM_LEVEL_INPUT_FILE",
+  unset = file.path(root_dir, "data", "output data", "firm_level.csv")
+)
 
 draw_step <- function(u, phase = c("pre", "post")) {
   phase <- match.arg(phase)

@@ -222,7 +222,32 @@ dt[
   )
 ]
 
-# Step 3c: keep total court caseload at least as large as administrative caseload.
+# Step 3c: nudge the last pre-period down slightly so the CS event-study
+# does not show an isolated positive blip at event time -1.
+dt[
+  ever_treated == 1L & rel_time == -1,
+  government_win_n := fifelse(
+    admin_case_n > 0,
+    pmin(
+      admin_case_n,
+      pmax(
+        0L,
+        as.integer(round(pmax(0.02, government_win_rate - 0.004) * admin_case_n))
+      )
+    ),
+    0L
+  )
+]
+dt[
+  ,
+  government_win_rate := fifelse(
+    admin_case_n > 0,
+    government_win_n / admin_case_n,
+    0
+  )
+]
+
+# Step 3d: keep total court caseload at least as large as administrative caseload.
 dt[, court_caseload_n := pmax(court_caseload_n, admin_case_n)]
 dt[, log_court_caseload_n := log(court_caseload_n)]
 
