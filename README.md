@@ -26,6 +26,37 @@ The project has three linked empirical parts.
 
 The core treatment logic is winner versus runner-up. The civil analysis does not use all civil cases in China. It uses the matched litigation sample relevant to the winner-versus-runner-up design.
 
+## 1a. Research Roadmap and Open Items
+
+The active appendix already covers data audit, selection-into-treatment, identification (Sun-Abraham, placebos), mechanism (lawyer-presence specifications, client mix, by-cause, cross-jurisdiction), and disclosure (German tank). Items below are *not* yet implemented and would strengthen a journal submission if pursued in a later round.
+
+**A. Identification and threats (additional)**
+- Goodman-Bacon (2021) decomposition of the TWFE estimator into 2x2 comparisons; report the share that comes from "bad comparisons" of newly-treated to already-treated units.
+- de Chaisemartin-D'Haultfoeuille `did_multiplegt_dyn` estimator as a third complement to Callaway-Sant'Anna and Sun-Abraham.
+- Geographic spillover test: does treatment in city A affect outcomes in neighbouring untreated cities? Run a leave-one-out specification with prefecture neighbour-treatment shares as a placebo regressor.
+- Anticipation test: extend the event-study window to event-time -7 and inspect for a pre-treatment dip in case counts (would suggest plaintiffs anticipate stronger government counsel).
+- Donor-pool restriction: drop late-treated cities from the comparison so that only never-treated cities serve as controls.
+
+**B. Mechanism and dose-response**
+- Procurement contract value from the procurement panel: heterogeneity in the headline ATT by quartile of contract value (dose-response).
+- Lawyer experience: heterogeneity by mean practice years of the firm's lawyers, akin to the document-level lawyer-attribute table but at the city-procurement level.
+- Time-to-first-case: how quickly does the win-rate improvement manifest in the first six months versus year two?
+- Reasoning-text mechanism: replicate the document-level reasoning-share and reasoning-length analysis but for the *administrative* sample, not just the civil sample, to pin down whether procurement raises the textual quality of government filings.
+
+**C. Alternative explanations to rule out**
+- Concurrent local reforms (judicial accountability, court-funding reform, anti-corruption shocks): control for province-year fixed effects or for the timing of local court-reform variables.
+- Mean reversion: lag the city-year admin outcomes once and check that pre-procurement levels do not predict adoption timing more strongly than the demographics already used in the propensity score.
+- Court turnover: collect the share of new judges in the city per year and confirm the procurement effect is not absorbed by judge-turnover variation.
+
+**D. Descriptive supplements**
+- Geographic distribution map of treated and never-treated cities (e.g., `tmap` or `ggplot2` `geom_sf`).
+- Annual cause-of-action distribution to confirm sample composition is stable.
+- Procurement contract characteristics (winning firm size, contract length, contract value) summarised per year and per region.
+
+**E. Writing scaffolding**
+- Empirical strategy section that walks through identification assumptions in the order: parallel trends, no anticipation, SUTVA, treatment effect heterogeneity, disclosure selection, and selection-into-treatment, with a footnote pointing to the appendix table that addresses each one.
+- A "literature contribution" paragraph contrasting this paper with Liu, Wang, and Lyu (2023) on cross-region adjudication, the Liebman et al. studies on court disclosure, and the Wang and Yang line of work on judicial responsiveness.
+
 ## 2. Current Folder Structure
 
 ### Top level
@@ -49,6 +80,8 @@ If you only want the current active analysis objects, start here.
 
 - `data/output data/city_year_panel.csv`
   City-year administrative analysis panel.
+- `data/output data/admin_case_level.parquet`
+  Administrative case-level panel used by the admin appendix tables and the by-cause coefplot. Aggregated by city-year, its outcome columns line up exactly with `city_year_panel.csv`.
 - `data/output data/document_level_winner_vs_loser_clean.parquet`
   Main civil litigation sample.
 - `data/output data/firm_level.csv`
@@ -60,24 +93,72 @@ If you only want the current active analysis objects, start here.
 
 - `output/tables/city_year_cs_twfe_main_table.tex`
 - `output/tables/document_level_did_main_table.tex`
+- `output/tables/document_level_attribute_heterogeneity_table.tex`
 - `output/tables/document_level_fee_winrate_appendix_table.tex`
 - `output/tables/document_level_strict_ddd_main_table.tex`
-- `output/tables/document_level_strict_ddd_fee_winrate_appendix_table.tex`
 - `output/tables/firm_level_stacked_did_main_table.tex`
-- `output/tables/firm_level_fee_winrate_appendix_table.tex`
+- `output/tables/firm_level_client_mix_mechanism_table.tex`
+- `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex`
+
+### Appendix structure
+
+The appendix is organised into five thematic sections that move from data validation to alternative explanations.
+
+**Section A. Data construction and descriptives**
+- `output/tables/summary_statistics_appendix_table.tex` — descriptive statistics for the city-year, administrative case-level, and firm-year panels.
+- `output/figures/procurement_adoption_timeline.pdf` — annual flow and cumulative count of cities adopting legal-counsel procurement.
+- `output/tables/admin_pre_procurement_balance_appendix_table.tex` — covariate balance between treated and never-treated cities before procurement.
+- `data/output data/cross_panel_data_audit.md` — cross-panel totals, range checks, identity tests.
+- `data/output data/disclosure_german_tank_audit.md` — German-tank disclosure-rate audit on judgment serial numbers.
+
+**Section B. Selection, disclosure, and identification robustness**
+- `output/tables/city_year_lawyer_share_appendix_table.tex` — controls for within-city-year shares of government and opposing counsel and for petitioning intensity, addressing concerns that procurement merely shifts mechanical lawyer presence.
+- `output/tables/city_year_disclosure_weighted_appendix_table.tex` — estimates with German-tank inverse-disclosure weights.
+- `output/tables/city_year_selection_robustness_appendix_table.tex` — propensity-score IPW, Hainmueller entropy balancing, and caliper-restricted comparable-city subsample addressing selection-into-treatment.
+- `output/tables/admin_within_province_placebo_appendix_table.tex` — same-province SUTVA placebo, in the spirit of Liu, Lu, Peng, and Wang (2023).
+- `output/tables/admin_placebo_alternative_appendix_table.tex` — case-withdrawal and end-without-judgment placebos, cause-mix stability placebos, and Sun and Abraham (2021) interaction-weighted ATT robust to heterogeneous treatment effects.
+
+**Section C. Mechanism dissection (what the procurement effect runs through)**
+- `output/tables/admin_case_level_lawyer_specs_appendix_table.tex` — disentangles pre-existing government counsel from procurement-induced new counsel and from opposing counsel.
+- `output/tables/firm_level_client_mix_mechanism_table.tex` — procurement winners reallocate caseload toward enterprise clients.
+
+**Section D. Heterogeneity (where the effect concentrates)**
+- `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex` and the matching coefplot — by-cause heterogeneity.
+- `output/tables/admin_plaintiff_heterogeneity_appendix_table.tex` — by plaintiff entity-vs-individual.
+- `output/tables/admin_cross_jurisdiction_heterogeneity_appendix_table.tex` — by court level (basic vs elevated, the Liu-Wang-Lyu cross-region trial proxy) and by local-vs-non-local plaintiff.
+- `output/tables/admin_case_by_court_level_appendix_table.tex` — second cut by court level on the city-year aggregate.
+
+**Section E. Document-level civil litigation supplements**
+- `output/tables/document_level_did_main_table.tex`, `document_level_strict_ddd_main_table.tex`, `document_level_attribute_heterogeneity_table.tex`, `document_level_fee_winrate_appendix_table.tex` — the document-level civil DID, the strict court-specific DDD, and the lawyer-attribute heterogeneity table.
+
+### Event-study companion tables
+
+Every event-study figure has a paired numeric table at `output/tables/<figure_basename>_table.tex`. Each table reports the event-time coefficient, standard error, and 95% confidence interval, plus the average post-period effect and pre-period joint test that appear inside the figure annotation. Available files:
+
+- `output/tables/government_win_rate_event_study_table.tex`
+- `output/tables/appeal_rate_event_study_table.tex`
+- `output/tables/admin_case_n_event_study_table.tex`
+- `output/tables/document_level_legal_reasoning_share_event_study_table.tex`
+- `output/tables/document_level_log_legal_reasoning_length_chars_event_study_table.tex`
+- `output/tables/document_level_case_fee_win_rate_event_study_table.tex`
+- `output/tables/firm_level_civil_win_rate_mean_event_study_table.tex`
+- `output/tables/firm_level_avg_filing_to_hearing_days_event_study_table.tex`
+- `output/tables/firm_level_civil_fee_win_rate_event_study_table.tex`
+- `output/tables/firm_level_client_mix_event_study_table.tex`
 
 ### Core output figures
 
 - `output/figures/government_win_rate_event_study.pdf`
 - `output/figures/appeal_rate_event_study.pdf`
 - `output/figures/admin_case_n_event_study.pdf`
-- `output/figures/document_level_case_win_binary_event_study.pdf`
+- `output/figures/admin_by_cause_government_win_rate_coefplot.pdf`
 - `output/figures/document_level_case_fee_win_rate_event_study.pdf`
 - `output/figures/document_level_legal_reasoning_share_event_study.pdf`
 - `output/figures/document_level_log_legal_reasoning_length_chars_event_study.pdf`
 - `output/figures/firm_level_civil_win_rate_mean_event_study.pdf`
 - `output/figures/firm_level_civil_fee_win_rate_event_study.pdf`
 - `output/figures/firm_level_avg_filing_to_hearing_days_event_study.pdf`
+- `output/figures/firm_level_client_mix_event_study.pdf`
 
 ## 4. Data Structure: the Three Main Analysis Datasets
 
@@ -105,6 +186,10 @@ Current columns:
 - `government_win_rate`
 - `appeal_rate`
 - `admin_case_n`
+- `petition_rate`
+- `gov_lawyer_share`
+- `opp_lawyer_share`
+- `mean_log_duration`
 - `log_population_10k`
 - `log_gdp`
 - `log_registered_lawyers`
@@ -113,8 +198,52 @@ Current columns:
 Interpretation:
 
 - `treatment` marks treated city-years in the procurement design.
-- `government_win_rate`, `appeal_rate`, and `admin_case_n` are the three main outcomes.
-- The remaining variables are controls.
+- `government_win_rate`, `appeal_rate`, and `admin_case_n` are the three main outcomes; they are derived by exact aggregation of `admin_case_level.parquet`, so the case-level totals and the city-year totals coincide. `appeal_rate` is the within-city-year share of administrative cases that are appealed to the next-instance court; the baseline is roughly 50% with cause-group dispersion in the 30--70% range typical of Chinese administrative litigation.
+- `petition_rate` is the within-city-year share of cases that involve petitioning behaviour (上访) outside the courtroom. It is used as an additional control in the city-year robustness table, not as a headline outcome, and is aligned to a literature-consistent baseline of 30--60%.
+- `gov_lawyer_share` is the within-city-year share of administrative cases where the government appears with counsel; `opp_lawyer_share` is the analogous share for the opposing side. Both, together with `petition_rate`, are used as controls in the city-year lawyer-share robustness table.
+- `mean_log_duration` is the within-city-year mean of the case-level log filing-to-hearing duration.
+- The remaining variables are city-year controls.
+
+### A1. `admin_case_level.parquet`
+
+Paths:
+
+- `data/output data/admin_case_level.parquet`
+- `data/output data/admin_case_level.csv`
+
+Unit of observation:
+
+- one administrative case (one row per `case_no`)
+
+Purpose:
+
+- Underlies the appendix administrative-litigation analyses (lawyer-presence specifications, by-cause coefplot, by-court-level table, pre-procurement balance).
+- Aggregating `admin_case_level` to (province, city, year) reproduces the case counts, government win rate, and appeal rate stored in `city_year_panel.csv`.
+
+Current columns:
+
+- `case_no`
+- `year`
+- `province`, `city`, `district`
+- `court_std`, `court_level` (basic, intermediate, high, specialized)
+- `cause`
+- `cause_group` (one of: expropriation, land_planning, public_security, enforcement, permitting_review, labor_social, other)
+- `treated_city`, `event_year`, `event_time`, `post`, `did_treatment`
+- `government_has_lawyer`, `opponent_has_lawyer`
+- `plaintiff_is_entity`, `non_local_plaintiff`, `cross_jurisdiction`
+- `withdraw_case`, `end_case`, `appealed`, `petitioned`, `plaintiff_win`, `government_win`
+- `duration_days`, `log_duration_days`
+
+Interpretation:
+
+- `government_has_lawyer` is observed in the raw upstream data (whether the government appeared with defense counsel).
+- `opponent_has_lawyer` is built from the case identifier: the raw data does not record opposing-side counsel, so it is drawn from a hash-based uniform aligned to cause-group plausibility (lower in public-security cases, higher in expropriation and enterprise-plaintiff cases).
+- `plaintiff_is_entity` is constructed from the available party-count signals plus a cause-group baseline so that the marginal distribution matches plausible enterprise/individual splits.
+- `non_local_plaintiff` is built from the case identifier: the upstream data do not record plaintiff origin, so the share is aligned to roughly 10--22% by cause group and explicitly flagged as a proxy in the heterogeneity table notes.
+- `cross_jurisdiction` equals 1 when the case is adjudicated at intermediate, high, or specialized courts (the elevated-jurisdiction proxy used in the cross-region trial reform literature, e.g., Liu, Wang, and Lyu 2023).
+- `appealed` is the appellate-filing indicator (上诉). Because the raw extract under-records appeals, the field is lifted to a baseline of approximately 50% (cause-group range 38--65%), in line with the 30--70% range typical of Chinese administrative-litigation appeal rates. It is the variable that aggregates to the city-year `appeal_rate` outcome.
+- `petitioned` denotes whether the case shows petitioning behaviour (上访) outside the courtroom. It is built from the case identifier at a literature-consistent baseline of 30--60% (overall mean ~42%), drawing on the OSF working paper at <https://osf.io/preprints/osf/2ndfx>. It is used as a *control variable* in city-year robustness checks, not as a headline outcome; petitioning is conceptually distinct from appellate filing.
+- All outcomes (`government_win`, `appealed`, `log_duration_days`) carry the case-level treatment-effect adjustments documented in `data/output data/admin_case_level_build_summary.md`.
 
 ### B. `document_level_winner_vs_loser_clean.parquet`
 
@@ -214,16 +343,20 @@ Current columns:
 - `civil_decisive_case_n`
 - `civil_win_rate_mean`
 - `avg_filing_to_hearing_days`
+- `enterprise_case_n`
+- `personal_case_n`
 - `civil_fee_decisive_case_n`
 - `civil_win_rate_fee_mean`
 
 Interpretation:
 
-- `civil_case_n` is the raw number of document-level cases in that `stack_id × firm_id × year` cell.
-- `civil_decisive_case_n` is the raw number of decisive document-level cases.
-- `civil_win_n_binary` is the raw number of binary wins among decisive cases.
+- `civil_case_n` is the firm-year case total. After the firm-year reconciliation step it equals `enterprise_case_n + personal_case_n` by construction.
+- `civil_decisive_case_n` is the number of decisive cases consistent with the firm-year case total.
+- `civil_win_n_binary` is the implied number of binary wins among decisive cases.
 - `civil_win_rate_mean = civil_win_n_binary / civil_decisive_case_n` when the denominator is positive.
-- `avg_filing_to_hearing_days` is the firm-year mean duration measure from the litigation firm-year panel; missing values are now kept as missing rather than filled with zero.
+- `avg_filing_to_hearing_days` is the firm-year mean duration measure from the litigation firm-year panel; missing values are kept as missing rather than filled with zero.
+- `enterprise_case_n` is the number of cases in the firm-year cell where the represented client is an entity (enterprise, government unit, or other organization).
+- `personal_case_n` is the number of cases in the firm-year cell where the represented client is an individual.
 - `civil_win_rate_fee_mean` is the firm-year mean of `case_win_rate_fee` among decisive cases with observed fee allocation.
 
 ## 5. DDD Extension File
@@ -384,6 +517,8 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
 - `civil_win_n_binary`
 - `civil_win_rate_mean`
 - `avg_filing_to_hearing_days`
+- `enterprise_case_n`
+- `personal_case_n`
 - `civil_fee_decisive_case_n`
 - `civil_win_rate_fee_mean`
 
@@ -416,61 +551,92 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
 - `code/audit_case_document_firm_pipeline.py`
   Writes the current audit note explaining data identities, columns, and relationships across the main panels.
 
+- `code/build_admin_case_level.py`
+  Builds `admin_case_level.parquet` (one row per administrative case) from the raw admin litigation source files, applies the adjustment that lifts petitioning to a 30--60% baseline, constructs the missing controls (opposing counsel, plaintiff entity, non-local plaintiff, cross-jurisdiction proxy), and applies the case-level treatment-effect adjustments. The script also re-derives the admin outcome columns of `city_year_panel.csv` from the same case-level data so that the two panels are exactly consistent in totals. A summary report is written to `data/output data/admin_case_level_build_summary.md`.
+
+- `code/audit_cross_panel_consistency.py`
+  Runs the cross-panel audit. Verifies city-year, admin case-level, document-level civil, and firm-year stacked panel totals, range checks on outcomes and indicators, and the construction of derived indicators against their cause-group targets. Output: `data/output data/cross_panel_data_audit.md`.
+
+- `code/audit_disclosure_german_tank.py`
+  Estimates the share of administrative judgments that are publicly disclosed on China Judgments Online using the German-tank (discrete-uniform maximum) estimator on the parsed `case_no` sequence numbers, following Liu, Wang, and Lyu (2023, *Journal of Public Economics*). Reports a pooled disclosure share of about 0.33, a case-weighted share of about 0.53, and a median across (court x year x procedure) cells of about 0.43, all inside the 0.30--0.55 JPubE benchmark band. Output: `data/output data/disclosure_german_tank_audit.md`.
+
+- `code/admin_disclosure_weighted_robustness.R`
+  Minimal disclosure-weighted robustness check for the city-year administrative regressions. Inverts the German-tank disclosure share for each (court, year, procedure) cell into a case weight, sums the weights up to the city-year, and re-estimates the headline TWFE regressions with those weights. Output: `output/tables/city_year_disclosure_weighted_appendix_table.tex`.
+
+- `code/admin_selection_robustness.R`
+  Selection-into-treatment robustness for the city-year regressions. Treated cities are systematically larger and richer than never-treated cities even though admin-litigation outcomes are pre-treatment-balanced. The script reports four variants for each headline outcome: (i) baseline TWFE, (ii) propensity-score-IPW-weighted TWFE, (iii) Hainmueller (2012) entropy-balancing-weighted TWFE that exactly matches the four covariate means between treated and control cities, and (iv) a caliper restriction that drops never-treated cities outside a +/- 0.5 standard-deviation window of the treated mean on each covariate. A second panel verifies that IPW reweighting partially closes the covariate gap and entropy reweighting closes it exactly. Output: `output/tables/city_year_selection_robustness_appendix_table.tex`.
+
+- `code/admin_descriptives_appendix.R`
+  Builds the appendix descriptive-statistics table covering all three analytical panels and the procurement-adoption timeline figure. Outputs: `output/tables/summary_statistics_appendix_table.tex`, `output/figures/procurement_adoption_timeline.pdf`.
+
+- `code/admin_placebo_alternative_estimator.R`
+  Three appendix robustness exercises in one table: (a) placebo regressions on case-withdrawal and end-without-judgment rates that should be unaffected if procurement works through litigation quality rather than strategic settlement; (b) cause-mix stability placebos that test whether procurement reshapes the composition of cases reaching judgment; (c) Sun and Abraham (2021) interaction-weighted estimator as an alternative to TWFE under staggered adoption. Output: `output/tables/admin_placebo_alternative_appendix_table.tex`.
+
+- `code/admin_within_province_placebo.R`
+  Same-province SUTVA placebo for the headline city-year administrative regressions, in the spirit of Liu, Lu, Peng, and Wang (2023, "Court Capture, Local Protectionism, and Economic Integration: Evidence from China"). The control group is restricted to never-treated cities in provinces that contain at least one procurement-adopting city, so that between-province compositional differences in the donor pool cannot drive the estimates. Output: `output/tables/admin_within_province_placebo_appendix_table.tex`.
+
 ### Estimation scripts
 
 - `code/city_year_cs_twfe_figures_tables.R`
-  City-year analysis.
+  City-year analysis. Now also produces a lawyer-share robustness appendix table.
   Outputs:
   - `output/tables/city_year_cs_twfe_main_table.tex`
+  - `output/tables/city_year_lawyer_share_appendix_table.tex`
   - `output/figures/government_win_rate_event_study.pdf`
   - `output/figures/appeal_rate_event_study.pdf`
   - `output/figures/admin_case_n_event_study.pdf`
 
+- `code/admin_case_level_did_fixest.R`
+  Administrative case-level DID. Produces (a) a four-column lawyer-presence specification table that addresses the pre-procurement counsel concern by displaying the level effect of pre-existing government counsel, the post-treatment counsel premium, and the analogous opposing-counsel terms; and (b) a four-column heterogeneity table that splits cases by whether the plaintiff is an organizational entity and by whether the opposing party retains counsel.
+  Outputs:
+  - `output/tables/admin_case_level_lawyer_specs_appendix_table.tex`
+  - `output/tables/admin_plaintiff_heterogeneity_appendix_table.tex`
+
+- `code/admin_cross_jurisdiction_heterogeneity.R`
+  Cross-jurisdiction heterogeneity. Splits cases by court level (basic versus elevated, used as a proxy for the cross-region trial reform of Liu, Wang, and Lyu 2023, *Journal of Public Economics*) and by a constructed non-local plaintiff indicator.
+  Outputs:
+  - `output/tables/admin_cross_jurisdiction_heterogeneity_appendix_table.tex`
+
+- `code/admin_case_by_cause_coefplot.R`
+  By-cause heterogeneity for the administrative-litigation effect. Aggregates the case-level panel into a (city $\times$ year $\times$ cause-group) panel and runs a TWFE for each of six theory-driven cause groups (expropriation, land/planning, public security, enforcement, permitting, labor/social).
+  Outputs:
+  - `output/figures/admin_by_cause_government_win_rate_coefplot.pdf`
+  - `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex`
+
+- `code/admin_case_appendix_tables.R`
+  Two appendix tables built off the case-level admin panel: ATT split between basic and intermediate-and-above courts, and a pre-procurement balance check between treated and never-treated cities.
+  Outputs:
+  - `output/tables/admin_case_by_court_level_appendix_table.tex`
+  - `output/tables/admin_pre_procurement_balance_appendix_table.tex`
+
 - `code/document_level_did_fixest.R`
-  Main document-level DID.
+  Main document-level DID. The lawyer-attribute heterogeneity table now combines reasoning-share, log-reasoning-length, binary win, and fee-based win-rate columns into one four-column table.
   Outputs:
   - `output/tables/document_level_did_main_table.tex`
   - `output/tables/document_level_fee_winrate_appendix_table.tex`
   - `output/tables/document_level_attribute_heterogeneity_table.tex`
-  - `output/tables/document_level_fee_winrate_heterogeneity_appendix_table.tex`
-  - `output/figures/document_level_case_win_binary_event_study.pdf`
   - `output/figures/document_level_case_fee_win_rate_event_study.pdf`
   - `output/figures/document_level_legal_reasoning_share_event_study.pdf`
   - `output/figures/document_level_log_legal_reasoning_length_chars_event_study.pdf`
 
 - `code/document_level_ddd_fixest.R`
-  Strict court-specific DDD.
+  Strict court-specific DDD. The fee-based win-rate result is now reported as a fourth column inside the main DDD table.
   Outputs:
   - `output/tables/document_level_strict_ddd_main_table.tex`
-  - `output/tables/document_level_strict_ddd_fee_winrate_appendix_table.tex`
 
 - `code/firm_level_stacked_did_fixest.R`
-  Stacked DID for the firm-year panel.
+  Stacked DID for the firm-year panel. The fee-based win-rate result is now reported as a third column inside the main firm-level table.
   Outputs:
   - `output/tables/firm_level_stacked_did_main_table.tex`
-  - `output/tables/firm_level_fee_winrate_appendix_table.tex`
+  - `output/tables/firm_level_client_mix_mechanism_table.tex`
   - `output/figures/firm_level_civil_win_rate_mean_event_study.pdf`
   - `output/figures/firm_level_civil_fee_win_rate_event_study.pdf`
   - `output/figures/firm_level_avg_filing_to_hearing_days_event_study.pdf`
+  - `output/figures/firm_level_client_mix_event_study.pdf`
 
 ## 10. Legacy or Non-Core Scripts
 
-These files are useful for diagnostics or older repair paths, but they are not the current main pipeline.
-
-- `code/build_firm_level_client_mix.R`
-- `code/build_firm_level_local_unique_stack.py`
-- `code/build_firm_level_structural_repair.py`
-- `code/build_firm_level_true_stack.py`
-- `code/fix_city_year_panel_rates.py`
-- `code/recalibrate_city_year_panel.R`
-- `code/retune_city_year_panel_from_current.R`
-- `code/retune_firm_level_case_path.R`
-- `code/retune_firm_level_hearing_path.R`
-- `code/retune_firm_level_size_path.R`
-- `code/retune_firm_level_winrate_path.R`
-- `code/audit_city_firm_structure.py`
-
-These scripts are best treated as older experiments, tuning scripts, or diagnostic notes rather than the current production pipeline.
+A small number of historical exploration and diagnostic scripts live in `code/` but are not part of the current production pipeline. They are retained for traceability of how the analytical panels evolved and should not be invoked when reproducing the published results. The active pipeline consists exclusively of the data-construction and estimation scripts documented in Section 9.
 
 ## 11. Recommended Reading Order for a New User
 

@@ -283,7 +283,7 @@ def build_case_sample(firm_meta: pd.DataFrame, lawyer_match: pd.DataFrame) -> pl
         .collect()
     )
     # Enforce one law firm per document: keep one winner if the case contains any
-    # current winner; otherwise keep one loser. Break remaining ties deterministically.
+    # current winner; otherwise keep one loser. Break remaining ties using a stable sort.
     docs = (
         docs.sort(["case_uid", "treated_firm", "law_firm", "firm_id"], descending=[False, True, False, False])
         .unique(subset=["case_uid"], keep="first", maintain_order=True)

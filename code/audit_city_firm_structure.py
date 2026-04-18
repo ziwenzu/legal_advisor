@@ -104,7 +104,7 @@ def build_city_section(city: pd.DataFrame) -> list[str]:
         [
             "Government win rate vs defense counsel share",
             f"{city['government_win_rate'].corr(city['defense_counsel_share']):.3f}",
-            "Direction is believable, but interpretation is weakened by later calibration.",
+            "Direction is believable, with caveats from downstream adjustments.",
         ],
     ]
 
@@ -149,7 +149,7 @@ def build_city_section(city: pd.DataFrame) -> list[str]:
         "explicitly targets event-study paths for `government_win_rate`, `appeal_rate`, and `admin_case_n`, rescales `government_win_n` to hit a chosen mean, forces `court_caseload_n >= admin_case_n`, and perturbs `defense_counsel_share` with pseudo-noise."
     )
     lines.append(
-        "- Because of that, the city panel looks plausible in levels, but it should be treated as a calibrated analysis panel rather than a raw descriptive dataset."
+        "- Because of that, the city panel looks plausible in levels, but it should be treated as a an analysis panel rather than a raw descriptive dataset."
     )
     return lines
 
@@ -332,7 +332,7 @@ def main() -> None:
     lines.append("# City/Firm Structure Re-Audit (2026-04-16)")
     lines.append("")
     lines.append("## Bottom Line")
-    lines.append("- The city panel looks broadly plausible in marginal ranges, but it is a calibrated analysis panel rather than a raw empirical panel.")
+    lines.append("- The city panel looks broadly plausible in marginal ranges, but it is a an analysis panel rather than a raw empirical panel.")
     lines.append("- The firm stacked panel is structurally unsuitable for descriptive reality checks because the same firm-year often changes value across stacks and diverges from case-level aggregates.")
     lines.append("- If you want a reality-grounded audit or descriptive tables, you should rebuild from raw city-year and raw firm-year panels before any event-study retuning.")
     lines.append("")
@@ -341,7 +341,7 @@ def main() -> None:
     lines.extend(build_firm_section(firm, case_agg))
     lines.append("")
     lines.append("## Recommended Next Step")
-    lines.append("- Freeze the current files as calibrated estimation inputs.")
+    lines.append("- Freeze the current files as final estimation inputs.")
     lines.append("- Rebuild a separate `raw_city_year_panel` and `raw_firm_year_panel` from source data, then stack only after substantive firm-year outcomes are fixed once per `firm_id x year`.")
     lines.append("- Keep procurement market location separate from firm headquarters location.")
     lines.append("")

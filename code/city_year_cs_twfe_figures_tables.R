@@ -66,8 +66,8 @@ preferred_controls <- function(outcome_name) {
   controls
 }
 
-estimate_twfe_main <- function(dt, outcome_name) {
-  rhs_terms <- c("treatment", preferred_controls(outcome_name))
+estimate_twfe_main <- function(dt, outcome_name, extra_controls = character(0)) {
+  rhs_terms <- c("treatment", preferred_controls(outcome_name), extra_controls)
   formula_obj <- as.formula(
     sprintf("%s ~ %s | city_id + year", outcome_name, paste(rhs_terms, collapse = " + "))
   )
@@ -233,6 +233,66 @@ build_plot_data <- function(cs_event_dt) {
   ]
 }
 
+build_event_study_table <- function(plot_dt, outcome_label, cs_att, cs_se, cs_pre_p,
+                                    file_path, file_label, caption) {
+  dt <- copy(plot_dt)
+  setorder(dt, event_time)
+  dt[, se := (ci_hi - estimate) / 1.96]
+
+  body_lines <- vapply(seq_len(nrow(dt)), function(i) {
+    row <- dt[i]
+    paste(
+      sprintf("%d", as.integer(row$event_time)),
+      "&", fmt_num(row$estimate),
+      "&", fmt_num(row$se),
+      "&", fmt_num(row$ci_lo),
+      "&", fmt_num(row$ci_hi),
+      "\\\\"
+    )
+  }, character(1))
+
+  lines <- c(
+    "\\begin{table}[!htbp]",
+    "\\centering",
+    sprintf("\\caption{%s}", caption),
+    sprintf("\\label{tab:%s}", file_label),
+    "\\begin{threeparttable}",
+    "\\begin{tabular}{lcccc}",
+    "\\toprule",
+    "Event Time & Estimate & SE & 95\\% CI Low & 95\\% CI High \\\\",
+    "\\midrule",
+    body_lines,
+    "\\midrule",
+    paste0(
+      "Average post-period CS ATT & ",
+      fmt_num(cs_att),
+      " & ", fmt_num(cs_se),
+      " & -- & -- \\\\"
+    ),
+    paste0(
+      "Pre-period joint test ($p$) & ",
+      fmt_p(cs_pre_p),
+      " & -- & -- & -- \\\\"
+    ),
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\begin{tablenotes}[flushleft]",
+    "\\footnotesize",
+    paste(
+      "\\item \\textit{Notes:}",
+      sprintf("Companion table for the city-year %s event-study figure.", outcome_label),
+      "Each row reports the Callaway and Sant'Anna staggered ATT at the indicated event time relative to the city's first procurement year, with influence-function 95\\% confidence intervals.",
+      "The Average post-period CS ATT line aggregates the post-period dynamic effects.",
+      "The pre-period joint test is the Wald statistic that all pre-treatment ATTs from $-5$ through $-2$ are jointly zero."
+    ),
+    "\\end{tablenotes}",
+    "\\end{threeparttable}",
+    "\\end{table}"
+  )
+
+  writeLines(lines, con = file_path)
+}
+
 plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_pre_p, file_path) {
   plot_dt <- copy(plot_dt)
   plot_dt[, x_plot := event_time]
@@ -259,7 +319,8 @@ plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_
   }
 
   if (outcome_label == "Government Win Rate") {
-    pre_y <- y_range[2] - 0.37 * y_span
+    ann_y <- 0.20
+    pre_y <- 0.20
   }
 
   if (outcome_label == "Appeal Rate") {
@@ -283,10 +344,19 @@ plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_
     dev.off()
   }, add = TRUE)
 
+  ylim_lo <- y_range[1] - 0.04 * y_span
+  ylim_hi <- y_range[2] + 0.08 * y_span
+  text_y_values <- c(ann_y, pre_y)
+  text_y_values <- text_y_values[is.finite(text_y_values)]
+  if (length(text_y_values) > 0) {
+    ylim_hi <- max(ylim_hi, max(text_y_values) + 0.04 * y_span)
+    ylim_lo <- min(ylim_lo, min(text_y_values) - 0.04 * y_span)
+  }
+
   plot(
     NA,
     xlim = c(x_range[1] - 0.5, x_range[2] + 0.5),
-    ylim = c(y_range[1] - 0.04 * y_span, y_range[2] + 0.08 * y_span),
+    ylim = c(ylim_lo, ylim_hi),
     xlab = "Years Since the Contract",
     ylab = y_title,
     main = "",
@@ -363,7 +433,16 @@ build_table_tex <- function(results_list, file_path) {
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: Standard errors are clustered by city. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    paste(
+      "\\item \\textit{Notes:}",
+      "Cell entries are estimated effects of legal-counsel procurement on city-year administrative outcomes.",
+      "The outcomes are the city-year government win rate (columns 1--2), the appeal rate filed by administrative-litigation parties (columns 3--4), and the count of administrative cases brought against the city government (columns 5--6).",
+      "Odd-numbered columns report the average treatment effect on the treated from the Callaway and Sant'Anna staggered estimator;",
+      "even-numbered columns report the coefficient on Treatment $\\times$ Post from a two-way fixed-effects regression with city and year fixed effects.",
+      "All specifications include city-year controls for log population, log GDP, log registered lawyers, and log court caseload.",
+      "Cluster-robust standard errors at the city level are in parentheses.",
+      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
+    ),
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -372,13 +451,116 @@ build_table_tex <- function(results_list, file_path) {
   writeLines(lines, con = file_path)
 }
 
+build_lawyer_share_appendix_table <- function(results_list, file_path) {
+  column_keys <- c(
+    "government_win_rate_baseline",
+    "government_win_rate_lawyer",
+    "appeal_rate_baseline",
+    "appeal_rate_lawyer",
+    "admin_case_n_baseline",
+    "admin_case_n_lawyer"
+  )
+  outcome_short <- c(
+    "Gov.\\ Win Rate",
+    "Gov.\\ Win Rate",
+    "Appeal Rate",
+    "Appeal Rate",
+    "Admin.\\ Cases",
+    "Admin.\\ Cases"
+  )
+  lawyer_yes <- c("", "Yes", "", "Yes", "", "Yes")
+
+  coef_row <- sapply(column_keys, function(key) {
+    res <- results_list[[key]]
+    paste0(fmt_num(res$estimate), stars(res$p_value))
+  })
+  se_row <- sapply(column_keys, function(key) {
+    res <- results_list[[key]]
+    paste0("(", fmt_num(res$se), ")")
+  })
+  obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
+  r2_row <- sapply(column_keys, function(key) {
+    res <- results_list[[key]]
+    if (is.na(res$r2)) "--" else fmt_num(res$r2)
+  })
+
+  lines <- c(
+    "\\begin{table}[!htbp]",
+    "\\centering",
+    "\\caption{City-Year Treatment Effects with and without Lawyer-Presence Controls}",
+    "\\label{tab:city_year_lawyer_share_appendix}",
+    "\\begin{threeparttable}",
+    "\\begin{tabular}{lcccccc}",
+    "\\toprule",
+    " & (1) & (2) & (3) & (4) & (5) & (6) \\\\",
+    paste("Outcome &", paste(outcome_short, collapse = " & "), "\\\\"),
+    "\\midrule",
+    paste("Treatment $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
+    paste("&", paste(se_row, collapse = " & "), "\\\\"),
+    "\\addlinespace",
+    paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
+    paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
+    paste("Government Counsel Share &", paste(lawyer_yes, collapse = " & "), "\\\\"),
+    paste("Opposing Counsel Share &", paste(lawyer_yes, collapse = " & "), "\\\\"),
+    paste("Petitioning Share &", paste(lawyer_yes, collapse = " & "), "\\\\"),
+    paste("City-Year Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Year FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\begin{tablenotes}[flushleft]",
+    "\\footnotesize",
+    paste(
+      "\\item \\textit{Notes:}",
+      "Cell entries are coefficients on the procurement-treatment interaction Treatment $\\times$ Post from city-year two-way fixed-effects regressions on the administrative-litigation panel.",
+      "The dependent variables are the government win rate (columns 1 and 2), the appeal rate filed by administrative-litigation parties (columns 3 and 4), and the count of administrative cases against the city government (columns 5 and 6), each computed from the underlying case-level data.",
+      "Even-numbered columns add three contemporaneous covariates: the within-city-year share of administrative cases in which the government appears with counsel, the share in which the opposing party appears with counsel, and the share of cases that involve petitioning behaviour outside the courtroom.",
+      "These additions capture the fact that neither pre-procurement governments nor never-procuring control cities operate at zero counsel presence, and that petitioning intensity is a parallel margin that may correlate with case outcomes; absorbing them isolates the residual procurement effect.",
+      "All specifications include city and year fixed effects together with city-year controls for log population, log GDP, log registered lawyers, and log court caseload.",
+      "Cluster-robust standard errors at the city level are in parentheses.",
+      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
+    ),
+    "\\end{tablenotes}",
+    "\\end{threeparttable}",
+    "\\end{table}"
+  )
+
+  writeLines(lines, con = file_path)
+}
+
+extract_twfe_with_extras <- function(model) {
+  base <- extract_twfe_coef(model)
+  ct <- as.data.table(coeftable(model), keep.rownames = "term")
+  pull <- function(term_name) {
+    row <- ct[term == term_name]
+    if (nrow(row) == 0) {
+      list(est = NA_real_, se = NA_real_, p = NA_real_)
+    } else {
+      list(
+        est = row[["Estimate"]],
+        se = row[["Std. Error"]],
+        p = row[["Pr(>|t|)"]]
+      )
+    }
+  }
+  gov <- pull("gov_lawyer_share")
+  opp <- pull("opp_lawyer_share")
+  base$gov_share_estimate <- gov$est
+  base$gov_share_se <- gov$se
+  base$gov_share_p <- gov$p
+  base$opp_share_estimate <- opp$est
+  base$opp_share_se <- opp$se
+  base$opp_share_p <- opp$p
+  base
+}
+
 main <- function() {
   dt <- read_city_panel(input_file)
 
   outcome_specs <- list(
-    government_win_rate = list(label = "Government Win Rate", y_title = "Gov't Win Rate"),
+    government_win_rate = list(label = "Government Win Rate", y_title = "Government Win Rate"),
     appeal_rate = list(label = "Appeal Rate", y_title = "Appeal Rate"),
-    admin_case_n = list(label = "Administrative Case Numbers", y_title = "Administrative Cases")
+    admin_case_n = list(label = "Administrative Case Numbers", y_title = "Administrative Case Count")
   )
 
   results_list <- list()
@@ -395,6 +577,7 @@ main <- function() {
     results_list[[paste0(outcome_name, "_cs")]] <- cs_coef
 
     plot_dt <- build_plot_data(extract_cs_event(cs_obj))
+    cs_pre_p <- extract_cs_pretest(cs_obj)$p_value
 
     plot_event_study(
       plot_dt = plot_dt,
@@ -402,8 +585,22 @@ main <- function() {
       y_title = outcome_specs[[outcome_name]]$y_title,
       cs_att = cs_coef$estimate,
       cs_se = cs_coef$se,
-      cs_pre_p = extract_cs_pretest(cs_obj)$p_value,
+      cs_pre_p = cs_pre_p,
       file_path = file.path(figure_dir, sprintf("%s_event_study.pdf", outcome_name))
+    )
+
+    build_event_study_table(
+      plot_dt = plot_dt,
+      outcome_label = outcome_specs[[outcome_name]]$label,
+      cs_att = cs_coef$estimate,
+      cs_se = cs_coef$se,
+      cs_pre_p = cs_pre_p,
+      file_path = file.path(table_dir, sprintf("%s_event_study_table.tex", outcome_name)),
+      file_label = sprintf("%s_event_study", outcome_name),
+      caption = sprintf(
+        "Event-Study Estimates Behind the City-Year %s Figure",
+        outcome_specs[[outcome_name]]$label
+      )
     )
   }
 
@@ -411,6 +608,24 @@ main <- function() {
     results_list = results_list,
     file_path = file.path(table_dir, "city_year_cs_twfe_main_table.tex")
   )
+
+  if (all(c("gov_lawyer_share", "opp_lawyer_share", "petition_rate") %in% names(dt))) {
+    appendix_results <- list()
+    for (outcome_name in names(outcome_specs)) {
+      base_model <- estimate_twfe_main(copy(dt), outcome_name)
+      lawyer_model <- estimate_twfe_main(
+        copy(dt),
+        outcome_name,
+        extra_controls = c("gov_lawyer_share", "opp_lawyer_share", "petition_rate")
+      )
+      appendix_results[[paste0(outcome_name, "_baseline")]] <- extract_twfe_with_extras(base_model)
+      appendix_results[[paste0(outcome_name, "_lawyer")]] <- extract_twfe_with_extras(lawyer_model)
+    }
+    build_lawyer_share_appendix_table(
+      results_list = appendix_results,
+      file_path = file.path(table_dir, "city_year_lawyer_share_appendix_table.tex")
+    )
+  }
 }
 
 main()

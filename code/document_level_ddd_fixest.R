@@ -71,8 +71,6 @@ read_document_panel <- function(path) {
   dt[, prior_admin_gov_exposure := as.integer(prior_admin_gov_exposure)]
   dt[, has_pre_admin_civil_case_in_court := as.integer(has_pre_admin_civil_case_in_court)]
 
-  # Main-table sample: keep all unexposed rows, but require exposed pairs to
-  # have pre-admin civil business in that same court.
   dt[, exposed_pair_has_pre_civil_support := as.integer(
     prior_admin_gov_exposure == 0L | has_pre_admin_civil_case_in_court == 1L
   )]
@@ -186,9 +184,9 @@ run_models <- function(dt) {
   )
 
   term_labels <- c(
-    did_treatment = "Winner $\\\\times$ Post",
+    did_treatment = "Winner $\\times$ Post",
     prior_admin_gov_exposure = "Previously Represented Gov't",
-    ddd_binary = "Winner $\\\\times$ Post $\\\\times$ Previously Represented Gov't"
+    ddd_binary = "Winner $\\times$ Post $\\times$ Previously Represented Gov't"
   )
 
   results <- list()
@@ -212,9 +210,9 @@ run_models <- function(dt) {
 
 run_fee_winrate_model <- function(dt) {
   term_labels <- c(
-    did_treatment = "Winner $\\\\times$ Post",
+    did_treatment = "Winner $\\times$ Post",
     prior_admin_gov_exposure = "Previously Represented Gov't",
-    ddd_binary = "Winner $\\\\times$ Post $\\\\times$ Previously Represented Gov't"
+    ddd_binary = "Winner $\\times$ Post $\\times$ Previously Represented Gov't"
   )
   model <- estimate_ddd_model(
     dt = dt,
@@ -261,6 +259,22 @@ write_latex_table <- function(results) {
   col_block <- tab[term == "ddd_binary"][order(column_id)]
   n_cells <- vapply(seq_len(nrow(col_block)), function(i) fmt_int(col_block$n_obs[i]), character(1))
   r2_cells <- vapply(seq_len(nrow(col_block)), function(i) fmt_num(col_block$r2[i]), character(1))
+  n_cols <- nrow(col_block)
+  yes_row <- paste(rep("Yes", n_cols), collapse = " & ")
+
+  sample_cells <- vapply(
+    seq_len(n_cols),
+    function(i) col_block$sample_label[i],
+    character(1)
+  )
+
+  outcome_cells <- vapply(
+    seq_len(n_cols),
+    function(i) col_block$column_label[i],
+    character(1)
+  )
+  num_cells <- paste(sprintf("(%d)", seq_len(n_cols)), collapse = " & ")
+  align_str <- paste0("l", paste(rep("c", n_cols), collapse = ""))
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -268,10 +282,10 @@ write_latex_table <- function(results) {
     "\\caption{Document-Level Strict DDD Estimates}",
     "\\label{tab:document_level_strict_ddd_main}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lccc}",
+    sprintf("\\begin{tabular}{%s}", align_str),
     "\\toprule",
-    " & (1) & (2) & (3) \\\\",
-    "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
+    paste(" &", num_cells, "\\\\"),
+    paste("Outcome &", paste(outcome_cells, collapse = " & "), "\\\\"),
     "\\midrule",
     row_did$coef,
     row_did$se,
@@ -284,21 +298,26 @@ write_latex_table <- function(results) {
     "\\addlinespace",
     paste0("Observations & ", paste(n_cells, collapse = " & "), " \\\\"),
     paste0("$R^2$ & ", paste(r2_cells, collapse = " & "), " \\\\"),
-    "Sample & All documents & All documents & Decisive cases \\\\",
-    "Firm FE & Yes & Yes & Yes \\\\",
-    "Stack $\\\\times$ Year FE & Yes & Yes & Yes \\\\",
-    "Court $\\\\times$ Year FE & Yes & Yes & Yes \\\\",
-    "Cause $\\\\times$ Side FE & Yes & Yes & Yes \\\\",
-    "Case Controls & Yes & Yes & Yes \\\\",
-    "Lawyer-Year FE bins & Yes & Yes & Yes \\\\",
+    paste("Firm FE &", yes_row, "\\\\"),
+    paste("Stack $\\times$ Year FE &", yes_row, "\\\\"),
+    paste("Court $\\times$ Year FE &", yes_row, "\\\\"),
+    paste("Cause $\\times$ Side FE &", yes_row, "\\\\"),
+    paste("Case Controls &", yes_row, "\\\\"),
+    paste("Lawyer-Year FE bins &", yes_row, "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    paste0(
-      "\\item Note: The sample is limited to firms that had already handled civil cases in that court before later representing the government there. ",
-      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. ",
-      "Standard errors are two-way clustered by firm and cleaned court. ",
+    paste(
+      "\\item \\textit{Notes:}",
+      "Cell entries are coefficients from a difference-in-difference-in-differences regression interacting Winner $\\times$ Post with an indicator for whether the firm had previously represented the government in administrative litigation in the same court.",
+      "Reasoning Share is the share of the judgment text devoted to legal reasoning;",
+      "log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section;",
+      "Case Win Binary is an indicator for the represented side prevailing among decisive cases;",
+      "Case Fee Win Rate is the represented side's fee-based win rate among decisive cases with observed fee allocation.",
+      "The sample is restricted to firms that had already handled civil cases in that court before any government-side appearance there.",
+      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type.",
+      "Two-way cluster-robust standard errors by firm and cleaned court appear in parentheses.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -310,78 +329,13 @@ write_latex_table <- function(results) {
   writeLines(lines, out_path, useBytes = TRUE)
 }
 
-write_fee_appendix_table <- function(results) {
-  term_order <- c("did_treatment", "prior_admin_gov_exposure", "ddd_binary")
-  tab <- copy(results)
-  tab[, term_order := match(term, term_order)]
-  setorder(tab, term_order)
-
-  coef_row <- function(term_name) {
-    row <- tab[term == term_name]
-    list(
-      coef = paste0(row$term_label[1], " & ", fmt_num(row$estimate[1]), stars_tex(row$p_value[1]), " \\\\"),
-      se = paste0(" & (", fmt_num(row$std_error[1]), ") \\\\")
-    )
-  }
-
-  row_did <- coef_row("did_treatment")
-  row_exp <- coef_row("prior_admin_gov_exposure")
-  row_ddd <- coef_row("ddd_binary")
-
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\centering",
-    "\\caption{Document-Level Strict DDD with Fee-Based Win Rate}",
-    "\\label{tab:document_level_strict_ddd_fee_appendix}",
-    "\\begin{threeparttable}",
-    "\\begin{tabular}{lc}",
-    "\\toprule",
-    " & Case Fee Win Rate \\\\",
-    "\\midrule",
-    row_did$coef,
-    row_did$se,
-    "\\addlinespace",
-    row_exp$coef,
-    row_exp$se,
-    "\\addlinespace",
-    row_ddd$coef,
-    row_ddd$se,
-    "\\addlinespace",
-    paste0("Observations & ", fmt_int(tab$n_obs[1]), " \\\\"),
-    paste0("$R^2$ & ", fmt_num(tab$r2[1]), " \\\\"),
-    "Sample & Decisive cases with fee share \\\\",
-    "Firm FE & Yes \\\\",
-    "Stack $\\\\times$ Year FE & Yes \\\\",
-    "Court $\\\\times$ Year FE & Yes \\\\",
-    "Cause $\\\\times$ Side FE & Yes \\\\",
-    "Case Controls & Yes \\\\",
-    "Lawyer-Year FE bins & Yes \\\\",
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\begin{tablenotes}[flushleft]",
-    "\\footnotesize",
-    paste0(
-      "\\item Note: The outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation. ",
-      "The sample is limited to firms that had already handled civil cases in that court before later representing the government there. ",
-      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. ",
-      "Standard errors are two-way clustered by firm and cleaned court. ",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
-    "\\end{tablenotes}",
-    "\\end{threeparttable}",
-    "\\end{table}"
-  )
-
-  out_path <- file.path(table_dir, build_output_name("document_level_strict_ddd_fee_winrate_appendix_table", "tex"))
-  writeLines(lines, out_path, useBytes = TRUE)
-}
-
 main <- function() {
   dt <- read_document_panel(input_file)
   results <- run_models(dt)
   fee_results <- run_fee_winrate_model(dt)
-  write_latex_table(results)
-  write_fee_appendix_table(fee_results)
+  fee_results[, column_id := 4L]
+  combined <- rbindlist(list(results, fee_results), fill = TRUE)
+  write_latex_table(combined)
 }
 
 main()

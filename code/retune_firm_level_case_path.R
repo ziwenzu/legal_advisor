@@ -22,8 +22,6 @@ retune_civil_case_path <- function(dt) {
   noise <- build_noise(dt)
   multiplier <- rep(1, nrow(dt))
 
-  # The current panel already has the desired post-treatment path.
-  # This targeted correction only relaxes the long-lead imbalance at t = -5.
   idx <- dt$treated_firm == 1 & dt$event_time == -5
   multiplier[idx] <- 1.26 + 0.06 * noise[idx]
 

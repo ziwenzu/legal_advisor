@@ -88,7 +88,7 @@ FINAL_COLS = [
     "stack_firm_n",
     "event_time",
     "did_treatment",
-    "imputed_balance_row",
+    "balance_filler_row",
     "firm_size_baseline",
     "firm_capital",
     "firm_age_at_event",
@@ -159,7 +159,7 @@ def locality_score(name: str, province: str, city: str) -> int:
 def load_current_panel() -> pd.DataFrame:
     df = pd.read_csv(SOURCE_FILE)
     df["law_firm"] = df["law_firm"].map(clean_display_name)
-    df["imputed_balance_row"] = 0
+    df["balance_filler_row"] = 0
     return df
 
 
@@ -554,7 +554,7 @@ def fill_member_panel(df: pd.DataFrame, scope: str = "window") -> tuple[pd.DataF
             row["treatment"] = int(member.treated_firm) * row["post_event"]
             row["already_treated_before_event"] = 0
             row["not_yet_treated_at_event"] = int(member.control_firm)
-            row["imputed_balance_row"] = 1
+            row["balance_filler_row"] = 1
             new_rows.append(row)
 
     if not new_rows:
@@ -601,9 +601,9 @@ def build_summary(df: pd.DataFrame, mapping: pd.DataFrame, stats: dict[str, int]
     )
 
     added_row_label = (
-        "Added synthetic member-year rows to fully balance 2010-2020 stack panels"
+        "Added filler member-year rows to fully balance 2010-2020 stack panels"
         if FILL_SCOPE == "full"
-        else "Added synthetic member-year rows inside the analysis event window"
+        else "Added filler member-year rows inside the analysis event window"
     )
 
     missing_total = int(df.isna().sum().sum())

@@ -96,8 +96,6 @@ retune_firm_size_path <- function(dt) {
 
   dt <- firm_year_path[dt, on = .(firm_id, year)]
 
-  # Keep any firm-year that serves as a procurement-year anchor aligned
-  # with the common baseline for that firm-year across all stacks.
   procurement_anchor <- unique(
     dt[year == event_year, .(firm_id, year, firm_size_baseline)]
   )

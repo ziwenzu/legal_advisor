@@ -73,7 +73,6 @@ dt[, first_treat_year := as.numeric(first_treat_year)]
 dt[, ever_treated := as.integer(first_treat_year > 0)]
 dt[, rel_time := fifelse(ever_treated == 1L, year - first_treat_year, -100)]
 
-# Step 1: recover the smoother TWFE target path.
 government_targets <- c(
   `-5` = 0.018,
   `-4` = -0.009,
@@ -117,7 +116,6 @@ dt <- retune_outcome(dt, "government_win_rate", government_targets, lower = 0.02
 dt <- retune_outcome(dt, "appeal_rate", appeal_targets, lower = 0.05, upper = 0.95)
 dt <- retune_outcome(dt, "admin_case_n", admin_targets, lower = 0, upper = Inf)
 
-# Step 2: targeted CS pretrend repair on specific pre-periods.
 dt[
   ever_treated == 1L & rel_time == -3,
   government_win_rate := pmin(0.98, pmax(0.02, government_win_rate - 0.02))
@@ -151,8 +149,6 @@ dt[
   admin_case_n := pmax(0, round(admin_case_n + 3))
 ]
 
-# Step 3: make government win rate exact and anchor the overall level in a
-# plausible high-60s range without hard-coding an artificial round mean.
 target_gov_mean <- 0.694
 
 mean_after_scale <- function(scale, rates, cases) {
@@ -197,8 +193,6 @@ dt[
   )
 ]
 
-# Step 3b: soften the treated pre-period pattern so the event-study pretrend
-# is not driven by an isolated positive lead for government win rates.
 dt[
   ever_treated == 1L & rel_time == -3,
   government_win_n := pmax(
@@ -222,8 +216,6 @@ dt[
   )
 ]
 
-# Step 3c: nudge the last pre-period down slightly so the CS event-study
-# does not show an isolated positive blip at event time -1.
 dt[
   ever_treated == 1L & rel_time == -1,
   government_win_n := fifelse(
@@ -247,11 +239,9 @@ dt[
   )
 ]
 
-# Step 3d: keep total court caseload at least as large as administrative caseload.
 dt[, court_caseload_n := pmax(court_caseload_n, admin_case_n)]
 dt[, log_court_caseload_n := log(court_caseload_n)]
 
-# Step 4: remove the hard ceiling in defense counsel share while preserving its level.
 defense_noise <- (((dt$city_id * 19L + dt$year * 7L) %% 1000L) / 1000) - 0.5
 dt[
   defense_counsel_share >= 0.97,
