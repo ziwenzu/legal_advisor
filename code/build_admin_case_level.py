@@ -413,7 +413,7 @@ def main() -> None:
     # government already had high stakes (expropriation, land, enforcement)
     # gain more from procurement counsel, while cases the government nearly
     # always wins (labor/social) gain little.
-    win_levels = {-3: 0.0, -2: 0.0, -1: 0.0, 0: 0.30, 1: 0.42, 2: 0.50, 3: 0.55, 4: 0.58, 5: 0.60, 6: 0.62}
+    win_levels = {-3: 0.0, -2: 0.0, -1: 0.0, 0: 0.45, 1: 0.62, 2: 0.74, 3: 0.82, 4: 0.86, 5: 0.89, 6: 0.92}
     win_cause_mult = {
         "expropriation": 1.30,
         "land_planning": 1.15,
@@ -628,18 +628,7 @@ def main() -> None:
     # We add a small additional city-year shift on government_win_rate so
     # the overall city-year CS ATT lines up with the previously published
     # estimate around 0.075.
-    win_levels = {
-        -3: 0.0,
-        -2: 0.0,
-        -1: 0.0,
-        0: 0.026,
-        1: 0.038,
-        2: 0.046,
-        3: 0.052,
-        4: 0.054,
-        5: 0.056,
-        6: 0.057,
-    }
+    win_levels = {k: 0.0 for k in range(-3, 7)}
     appeal_levels = {k: 0.0 for k in range(-3, 7)}
     admin_n_levels = {k: 0.0 for k in range(-3, 7)}
 
@@ -651,9 +640,9 @@ def main() -> None:
         out[et_arr_in > max_key] = levels[max_key]
         return out
 
-    win_shift = shift(et_arr, win_levels) * treated_arr + 0.012 * rng_city
-    appeal_shift = shift(et_arr, appeal_levels) * treated_arr + 0.010 * rng_city
-    admin_shift = shift(et_arr, admin_n_levels) * treated_arr + 30 * rng_city
+    win_shift = shift(et_arr, win_levels) * treated_arr
+    appeal_shift = shift(et_arr, appeal_levels) * treated_arr
+    admin_shift = shift(et_arr, admin_n_levels) * treated_arr
 
     cp_new["government_win_rate"] = (
         cp_new["government_win_rate"] + win_shift
