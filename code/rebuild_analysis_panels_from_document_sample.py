@@ -405,7 +405,9 @@ def build_firm_level_panel(doc_df: pd.DataFrame, static_meta: pd.DataFrame, raw_
     for col in count_cols:
         balanced[col] = balanced[col].fillna(0.0)
 
-    balanced["avg_filing_to_hearing_days"] = balanced["avg_filing_to_hearing_days"].fillna(0.0)
+    balanced["avg_filing_to_hearing_days"] = pd.to_numeric(
+        balanced["avg_filing_to_hearing_days"], errors="coerce"
+    )
 
     balanced["event_time"] = balanced["year"] - balanced["event_year"]
     balanced["did_treatment"] = (

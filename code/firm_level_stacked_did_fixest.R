@@ -172,7 +172,7 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
     y_span <- 1
   }
 
-  ann_x <- 0
+  ann_x <- 2
   ann_y <- y_range[2] + 0.03 * y_span
   ann_adj <- c(0, 1)
   pre_x <- -4.8
@@ -365,7 +365,7 @@ build_main_table <- function(results_list, file_path) {
     paste(
       "\\item Note:",
       sprintf("Treated firms are procurement winners and controls are %s.", control_note),
-      "The rebuilt firm-level panel is aggregated from the raw one-document-one-firm winner-vs-runner-up sample, and only outcomes with acceptable rebuilt pre-period diagnostics are retained in this table.",
+      "The rebuilt firm-level panel is aggregated from the document-level litigation sample, and only outcomes with acceptable rebuilt pre-period diagnostics are retained in this table.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -456,7 +456,7 @@ build_fee_winrate_appendix_table <- function(result, file_path) {
     paste(
       "\\item Note:",
       sprintf("Treated firms are procurement winners and controls are %s.", control_note),
-      "This appendix table replaces the binary decisive-case win rate with `civil_win_rate_fee_mean`, the firm-year mean of case-level fee-based win rates built from the rebuilt raw document sample.",
+      "The outcome is the firm-year mean fee-based win rate among decisive cases with observed fee allocation.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

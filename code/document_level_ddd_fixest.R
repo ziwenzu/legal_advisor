@@ -296,8 +296,8 @@ write_latex_table <- function(results) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste0(
-      "\\item Note: The sample keeps all unexposed rows and restricts exposed firm-court pairs to those with at least one civil case in that same court before the first observed government-side administrative appearance there. ",
-      "All columns use the raw winner-vs-runner-up document sample and include firm FE, stack $\\\\times$ year FE, court $\\\\times$ year FE, cause $\\\\times$ side FE, case controls, and lawyer-year attribute bins. ",
+      "\\item Note: The sample is limited to firms that had already handled civil cases in that court before later representing the government there. ",
+      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. ",
       "Standard errors are two-way clustered by firm and cleaned court. ",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -361,9 +361,9 @@ write_fee_appendix_table <- function(results) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste0(
-      "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. ",
-      "The estimates use the raw winner-vs-runner-up document sample. ",
-      "The sample keeps all unexposed rows and restricts exposed firm-court pairs to those with at least one civil case in that same court before the first observed government-side administrative appearance there. ",
+      "\\item Note: The outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation. ",
+      "The sample is limited to firms that had already handled civil cases in that court before later representing the government there. ",
+      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. ",
       "Standard errors are two-way clustered by firm and cleaned court. ",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

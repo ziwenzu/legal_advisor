@@ -315,19 +315,17 @@ plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_
 
   ann_y <- y_range[2] + 0.09 * y_span
   pre_y <- y_range[2] - 0.08 * y_span
-  ann_x <- -5
+  ann_x <- 2
   pre_x <- -5
   if (outcome_name %in% c("legal_reasoning_share", "log_legal_reasoning_length_chars")) {
     ann_y <- -0.01
     pre_y <- -0.04
   }
   if (outcome_name == "log_legal_reasoning_length_chars") {
-    ann_x <- 2
     ann_y <- -0.1
     pre_y <- -0.1
   }
   if (outcome_name == "legal_reasoning_share") {
-    ann_x <- 2
     pre_y <- -0.01
   }
 
@@ -396,7 +394,7 @@ build_main_table <- function(main_results, robust_results, file_path) {
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: `All documents` uses the full one-document-one-law-firm winner-vs-runner-up sample. `Decisive cases` uses documents that can be coded into a binary win/loss outcome. Standard errors are clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: Columns labeled `All documents' use the full document-level litigation sample. Columns labeled `Decisive cases' use cases that can be coded into a binary win/loss outcome. Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. Standard errors are clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -426,7 +424,7 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     "\\begin{tabular}{lcc}",
     "\\toprule",
     " & (1) & (2) \\\\",
-    "Outcome & Stack $\\times$ Year FE & Court $\\times$ Year FE \\\\",
+    "Outcome & Case Fee Win Rate & Case Fee Win Rate \\\\",
     "\\midrule",
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
@@ -444,7 +442,7 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. The estimates use the raw winner-vs-runner-up document sample. Standard errors are clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: The outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation. Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. Standard errors are clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -511,7 +509,7 @@ build_attribute_table <- function(results_list, file_path) {
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: Each row reports the coefficient on Winner $\\times$ Post $\\times$ attribute. CCP equals 1 if the matched lawyer is a Communist Party member. Female equals 1 if the matched lawyer is a woman. Master and Above equals 1 if the matched lawyer has a master's or PhD degree. Seniority is standardized lawyer practice years. Case Win Binary uses decisive cases only. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: Entries interact Winner $\\times$ Post with the listed lawyer attribute. CCP equals 1 if the matched lawyer is a Communist Party member. Female equals 1 if the matched lawyer is a woman. Master and Above equals 1 if the matched lawyer has a master's or PhD degree. Seniority is standardized lawyer practice years. Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. Case Win Binary uses decisive cases only. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -566,7 +564,7 @@ build_attribute_fee_appendix_table <- function(results_list, file_path) {
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: Each row reports the coefficient on Winner $\\times$ Post $\\times$ attribute using `case_win_rate_fee` as the outcome. The sample is restricted to decisive cases with non-missing fee-based win rates. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: Entries interact Winner $\\times$ Post with the listed lawyer attribute. The outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation. Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
