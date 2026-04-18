@@ -22,6 +22,7 @@ FIRM_TRUE_STACK_FILE = ROOT / "data" / "output data" / "firm_level_true_stack.cs
 OUT_MAPPING_FILE = ROOT / "data" / "output data" / "civil_case_fee_winrate_sql_mapping.parquet"
 SUMMARY_FILE = ROOT / "data" / "output data" / "civil_case_fee_winrate_sql_summary_20260417.md"
 TEMP_DIR = ROOT / "data" / "temp data" / "civil_fee_winrate_sql"
+LITIGATION_SIDE_FILE = ROOT / "data" / "temp data" / "litigation_panels_full" / "litigation_case_side_dedup.parquet"
 
 MYSQL_BIN = "/opt/homebrew/opt/mysql-client@8.4/bin/mysql"
 MYSQL_LOGIN_PATH = "tencent_mysql"
@@ -29,6 +30,7 @@ MYSQL_DB = "bilibili"
 YEAR_MIN = 2010
 YEAR_MAX = 2020
 HISTOGRAM_BINS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+DECISIVE_OVERRIDE_OUTCOME_CLASSES = {"plaintiff_win", "plaintiff_loss"}
 
 
 def normalize_case_no(value: object) -> str | None:
@@ -60,6 +62,27 @@ def predict_binary(plaintiff_fee_share: float, side: str) -> int:
     if side == "defendant":
         return int(plaintiff_fee_share >= 0.5)
     raise ValueError(f"Unexpected side value: {side}")
+
+
+def load_case_outcome_overrides() -> pl.LazyFrame:
+    return (
+        pl.scan_parquet(LITIGATION_SIDE_FILE)
+        .select(["case_uid", "side", "outcome_class", "side_win"])
+        .group_by(["case_uid", "side"])
+        .agg(
+            [
+                pl.col("outcome_class").drop_nulls().first().alias("outcome_class"),
+                pl.col("side_win").drop_nulls().first().cast(pl.Int8).alias("side_win"),
+            ]
+        )
+        .with_columns(
+            pl.col("outcome_class")
+            .is_in(DECISIVE_OVERRIDE_OUTCOME_CLASSES)
+            .fill_null(False)
+            .alias("case_decisive_override")
+        )
+        .select(["case_uid", "side", "side_win", "case_decisive_override"])
+    )
 
 
 @dataclass
@@ -147,7 +170,7 @@ class SqlYearStats:
         }
 
 
-def load_case_keys() -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_case_keys() -> pd.DataFrame:
     case_key_df = (
         pl.scan_parquet(CASE_PARQUET_FILE)
         .select(
@@ -162,31 +185,8 @@ def load_case_keys() -> tuple[pd.DataFrame, pd.DataFrame]:
         .to_pandas()
     )
 
-    decisive_binary_df = (
-        pl.scan_parquet(CASE_PARQUET_FILE)
-        .select(
-            [
-                pl.col("year").cast(pl.Int16),
-                normalize_case_no_expr("case_no").alias("case_no_key"),
-                pl.col("side").cast(pl.Utf8),
-                pl.col("case_win_binary").cast(pl.Int8),
-                pl.col("case_decisive").cast(pl.Int8),
-            ]
-        )
-        .filter(
-            pl.col("case_no_key").is_not_null()
-            & (pl.col("case_no_key") != "")
-            & (pl.col("case_decisive") == 1)
-            & pl.col("case_win_binary").is_not_null()
-        )
-        .unique()
-        .collect()
-        .to_pandas()
-    )
-
-    decisive_binary_df["year"] = decisive_binary_df["year"].astype(int)
     case_key_df["year"] = case_key_df["year"].astype(int)
-    return case_key_df, decisive_binary_df
+    return case_key_df
 
 
 def mysql_query_for_year(year: int) -> str:
@@ -275,55 +275,9 @@ def stream_sql_year(year: int, target_keys: set[str]) -> tuple[SqlYearStats, Pat
     return stats, matched_path
 
 
-def choose_share_from_conflict(
-    options_df: pd.DataFrame,
-    decisive_rows: pd.DataFrame | None,
-) -> tuple[float | None, str, int | None, int | None]:
-    if options_df.empty:
-        return None, "no_valid_share", None, None
-
-    ranked = options_df.sort_values(
-        ["share_row_n", "plaintiff_fee_share_sql"],
-        ascending=[False, True],
-        kind="mergesort",
-    ).copy()
-
-    if decisive_rows is None or decisive_rows.empty:
-        top = ranked.iloc[0]
-        return float(top["plaintiff_fee_share_sql"]), "mode_no_binary_anchor", None, None
-
-    total_checks = int(len(decisive_rows))
-    scored_rows: list[dict[str, object]] = []
-    for _, option in ranked.iterrows():
-        share = float(option["plaintiff_fee_share_sql"])
-        matches = 0
-        for _, decisive_row in decisive_rows.iterrows():
-            predicted = predict_binary(share, str(decisive_row["side"]))
-            if predicted == int(decisive_row["case_win_binary"]):
-                matches += 1
-        scored_rows.append(
-            {
-                "share": share,
-                "share_row_n": int(option["share_row_n"]),
-                "matches": matches,
-                "compatible": int(matches == total_checks),
-            }
-        )
-
-    scored_df = pd.DataFrame(scored_rows).sort_values(
-        ["compatible", "matches", "share_row_n", "share"],
-        ascending=[False, False, False, True],
-        kind="mergesort",
-    )
-    top = scored_df.iloc[0]
-    rule = "binary_consistent_tie_break" if int(top["compatible"]) == 1 else "mode_best_binary_match"
-    return float(top["share"]), rule, int(top["matches"]), total_checks
-
-
 def aggregate_year_matches(
     year: int,
     matched_path: Path,
-    decisive_binary_df: pd.DataFrame,
 ) -> pd.DataFrame:
     raw = pd.read_csv(
         matched_path,
@@ -344,8 +298,6 @@ def aggregate_year_matches(
                 "plaintiff_fee_share_min",
                 "plaintiff_fee_share_max",
                 "selection_rule",
-                "binary_match_n",
-                "binary_check_n",
             ]
         )
 
@@ -373,8 +325,6 @@ def aggregate_year_matches(
         out["plaintiff_fee_share_min"] = pd.NA
         out["plaintiff_fee_share_max"] = pd.NA
         out["selection_rule"] = "no_valid_share"
-        out["binary_match_n"] = pd.NA
-        out["binary_check_n"] = pd.NA
         return out
 
     valid_rows = valid.groupby("case_no_key", as_index=False)["share_row_n"].sum().rename(
@@ -408,36 +358,8 @@ def aggregate_year_matches(
     out["valid_share_row_n"] = out["valid_share_row_n"].fillna(0).astype(int)
     out["distinct_valid_share_n"] = out["distinct_valid_share_n"].fillna(0).astype(int)
     out["plaintiff_fee_share_sql"] = out["mode_share"]
-    out["selection_rule"] = "mode_single_valid_share"
-    out["binary_match_n"] = pd.NA
-    out["binary_check_n"] = pd.NA
-
-    conflict_keys = out.loc[out["distinct_valid_share_n"] > 1, "case_no_key"].tolist()
-    if conflict_keys:
-        decisive_year = decisive_binary_df.loc[decisive_binary_df["year"] == year].copy()
-        decisive_map = {
-            case_no_key: grp[["side", "case_win_binary"]].drop_duplicates()
-            for case_no_key, grp in decisive_year.groupby("case_no_key", sort=False)
-        }
-        option_map = {
-            case_no_key: grp[["plaintiff_fee_share_sql", "share_row_n"]].sort_values(
-                ["share_row_n", "plaintiff_fee_share_sql"],
-                ascending=[False, True],
-                kind="mergesort",
-            )
-            for case_no_key, grp in valid.loc[valid["case_no_key"].isin(conflict_keys)].groupby("case_no_key", sort=False)
-        }
-
-        for case_no_key in conflict_keys:
-            selected_share, rule, match_n, check_n = choose_share_from_conflict(
-                options_df=option_map[case_no_key],
-                decisive_rows=decisive_map.get(case_no_key),
-            )
-            mask = out["case_no_key"] == case_no_key
-            out.loc[mask, "plaintiff_fee_share_sql"] = selected_share
-            out.loc[mask, "selection_rule"] = rule
-            out.loc[mask, "binary_match_n"] = match_n
-            out.loc[mask, "binary_check_n"] = check_n
+    out["selection_rule"] = "mode_valid_share"
+    out.loc[out["distinct_valid_share_n"] <= 1, "selection_rule"] = "mode_single_valid_share"
 
     out["year"] = year
     out = out[
@@ -451,14 +373,12 @@ def aggregate_year_matches(
             "plaintiff_fee_share_min",
             "plaintiff_fee_share_max",
             "selection_rule",
-            "binary_match_n",
-            "binary_check_n",
         ]
     ].copy()
     return out
 
 
-def build_fee_mapping(case_keys_df: pd.DataFrame, decisive_binary_df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+def build_fee_mapping(case_keys_df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict[str, object]]]:
     mapping_frames: list[pd.DataFrame] = []
     stats_rows: list[dict[str, object]] = []
 
@@ -466,9 +386,16 @@ def build_fee_mapping(case_keys_df: pd.DataFrame, decisive_binary_df: pd.DataFra
         target_keys = set(case_keys_df.loc[case_keys_df["year"] == year, "case_no_key"].dropna())
         if not target_keys:
             continue
-        stats, matched_path = stream_sql_year(year, target_keys)
-        year_map = aggregate_year_matches(year, matched_path, decisive_binary_df)
         year_map_path = TEMP_DIR / f"civil_fee_mapping_{year}.parquet"
+        stats_path = TEMP_DIR / f"sql_distribution_{year}.json"
+
+        if year_map_path.exists() and stats_path.exists():
+            mapping_frames.append(pd.read_parquet(year_map_path))
+            stats_rows.append(json.loads(stats_path.read_text(encoding="utf-8")))
+            continue
+
+        stats, matched_path = stream_sql_year(year, target_keys)
+        year_map = aggregate_year_matches(year, matched_path)
         pl.from_pandas(year_map).write_parquet(year_map_path, compression="zstd")
         matched_path.unlink(missing_ok=True)
         mapping_frames.append(year_map)
@@ -486,11 +413,21 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
     mapping_pl = pl.from_pandas(
         mapping_df[["year", "case_no_key", "plaintiff_fee_share_sql"]].copy()
     )
+    outcome_pl = load_case_outcome_overrides()
+    drop_existing_cols = [
+        "plaintiff_fee_share_sql",
+        "case_fee_burden_share",
+        "case_win_rate_fee",
+        "case_decisive_override",
+        "side_win",
+    ]
 
     case_lazy = (
         pl.scan_parquet(CASE_PARQUET_FILE)
+        .select(pl.all().exclude(drop_existing_cols))
         .with_columns(normalize_case_no_expr("case_no").alias("case_no_key"))
         .join(mapping_pl.lazy(), on=["year", "case_no_key"], how="left")
+        .join(outcome_pl, on=["case_uid", "side"], how="left")
         .with_columns(
             [
                 pl.when(pl.col("side") == "plaintiff")
@@ -507,8 +444,45 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
                 .otherwise(None)
                 .cast(pl.Float64)
                 .alias("case_win_rate_fee"),
+                pl.when(pl.col("case_decisive_override"))
+                .then(pl.lit(1))
+                .otherwise(pl.col("case_decisive"))
+                .cast(pl.Int8)
+                .alias("case_decisive_effective"),
+                pl.when(pl.col("case_decisive_override") & pl.col("side_win").is_not_null())
+                .then(pl.col("side_win"))
+                .when(pl.col("case_decisive") == 1)
+                .then(pl.col("case_win_binary"))
+                .otherwise(None)
+                .cast(pl.Int8)
+                .alias("case_win_binary_effective"),
             ]
         )
+        .with_columns(
+            (
+                (pl.col("case_decisive_effective") == 1)
+                & pl.col("case_win_binary_effective").is_not_null()
+                & pl.col("case_win_rate_fee").is_not_null()
+                & ((pl.col("case_win_rate_fee") >= 0.5).cast(pl.Int8) != pl.col("case_win_binary_effective"))
+            ).alias("fee_binary_inconsistent")
+        )
+        .with_columns(
+            [
+                pl.when(pl.col("fee_binary_inconsistent"))
+                .then(None)
+                .otherwise(pl.col("case_fee_burden_share"))
+                .alias("case_fee_burden_share"),
+                pl.when(pl.col("fee_binary_inconsistent"))
+                .then(None)
+                .otherwise(pl.col("case_win_rate_fee"))
+                .alias("case_win_rate_fee"),
+            ]
+        )
+        .drop("fee_binary_inconsistent")
+        .drop("case_decisive_effective")
+        .drop("case_win_binary_effective")
+        .drop("case_decisive_override")
+        .drop("side_win")
         .drop("case_no_key")
     )
 
@@ -521,27 +495,52 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
 
     audit_df = (
         pl.scan_parquet(CASE_PARQUET_FILE)
+        .join(outcome_pl, on=["case_uid", "side"], how="left")
+        .with_columns(
+            [
+                pl.when(pl.col("case_decisive_override"))
+                .then(pl.lit(1))
+                .otherwise(pl.col("case_decisive"))
+                .cast(pl.Int8)
+                .alias("case_decisive_effective"),
+                pl.when(pl.col("case_decisive_override") & pl.col("side_win").is_not_null())
+                .then(pl.col("side_win"))
+                .when(pl.col("case_decisive") == 1)
+                .then(pl.col("case_win_binary"))
+                .otherwise(None)
+                .cast(pl.Int8)
+                .alias("case_win_binary_effective"),
+            ]
+        )
         .select(
             [
                 pl.len().alias("rows"),
                 pl.col("case_win_rate_fee").is_not_null().sum().alias("rows_with_fee_winrate"),
                 (
                     (
-                        (pl.col("case_decisive") == 1)
-                        & pl.col("case_win_binary").is_not_null()
+                        (pl.col("case_decisive_effective") == 1)
+                        & pl.col("case_win_binary_effective").is_not_null()
                         & pl.col("case_win_rate_fee").is_not_null()
-                        & ((pl.col("case_win_rate_fee") >= 0.5).cast(pl.Int8) == pl.col("case_win_binary"))
+                        & ((pl.col("case_win_rate_fee") >= 0.5).cast(pl.Int8) == pl.col("case_win_binary_effective"))
                     )
                 )
                 .sum()
                 .alias("binary_consistent_rows"),
                 (
-                    (pl.col("case_decisive") == 1)
-                    & pl.col("case_win_binary").is_not_null()
-                    & pl.col("case_win_rate_fee").is_not_null()
+                    (pl.col("case_decisive_effective") == 1)
+                    & pl.col("case_win_binary_effective").is_not_null()
+                    & pl.col("plaintiff_fee_share_sql").is_not_null()
                 )
                 .sum()
                 .alias("binary_checked_rows"),
+                (
+                    (pl.col("case_decisive_effective") == 1)
+                    & pl.col("case_win_binary_effective").is_not_null()
+                    & pl.col("plaintiff_fee_share_sql").is_not_null()
+                    & pl.col("case_win_rate_fee").is_null()
+                )
+                .sum()
+                .alias("binary_inconsistent_rows_dropped"),
                 pl.col("case_win_rate_fee").mean().alias("mean_fee_winrate"),
                 pl.col("case_win_rate_fee").median().alias("median_fee_winrate"),
             ]
@@ -599,6 +598,13 @@ def augment_firm_panel(file_path: Path, fee_panel: pd.DataFrame) -> None:
     if not file_path.exists():
         return
     df = pd.read_csv(file_path)
+    existing_fee_cols = [
+        col
+        for col in df.columns
+        if col.startswith("civil_fee_decisive_case_n") or col.startswith("civil_win_rate_fee_mean")
+    ]
+    if existing_fee_cols:
+        df = df.drop(columns=existing_fee_cols)
     merged = df.merge(fee_panel, on=["firm_id", "year"], how="left")
     if "civil_fee_decisive_case_n" in merged.columns:
         merged["civil_fee_decisive_case_n"] = pd.to_numeric(
@@ -620,9 +626,6 @@ def write_summary(
     sql_stats_df = pd.DataFrame(sql_stats_rows).sort_values("year")
     mapping_nonmissing = mapping_df["plaintiff_fee_share_sql"].notna().sum()
     conflict_n = int((mapping_df["distinct_valid_share_n"] > 1).sum())
-    compatible_conflict_n = int(
-        mapping_df["selection_rule"].eq("binary_consistent_tie_break").sum()
-    )
     target_case_n = len(case_keys_df)
 
     checked_rows = int(case_audit["binary_checked_rows"])
@@ -642,13 +645,14 @@ def write_summary(
         f"- Unique `(year, case_no)` keys in current `case_level`: `{target_case_n:,}`",
         f"- Keys with a selected SQL fee-share value: `{int(mapping_nonmissing):,}`",
         f"- Cases with more than one valid SQL fee-share candidate: `{conflict_n:,}`",
-        f"- Conflict cases resolved by full binary consistency: `{compatible_conflict_n:,}`",
+        f"- Conflict cases resolved by the within-case mode rule: `{conflict_n:,}`",
         "",
         "Constructed case-level fee outcome:",
         f"- Rows with non-missing `case_win_rate_fee`: `{int(case_audit['rows_with_fee_winrate']):,}`",
         f"- Mean `case_win_rate_fee`: `{case_audit['mean_fee_winrate']:.4f}`",
         f"- Median `case_win_rate_fee`: `{case_audit['median_fee_winrate']:.4f}`",
         f"- Decisive rows checked against current `case_win_binary`: `{checked_rows:,}`",
+        f"- Decisive rows dropped because fee-based threshold conflicts with current binary: `{int(case_audit['binary_inconsistent_rows_dropped']):,}`",
         f"- Consistency rate for `1[case_win_rate_fee >= 0.5]`: `{consistency_rate:.4f}`",
         "",
         "SQL-wide plaintiff fee-share distribution by year:",
@@ -669,8 +673,8 @@ def write_summary(
 
 
 def main() -> None:
-    case_keys_df, decisive_binary_df = load_case_keys()
-    mapping_df, sql_stats_rows = build_fee_mapping(case_keys_df, decisive_binary_df)
+    case_keys_df = load_case_keys()
+    mapping_df, sql_stats_rows = build_fee_mapping(case_keys_df)
     pl.from_pandas(mapping_df).write_parquet(OUT_MAPPING_FILE, compression="zstd")
 
     case_audit = augment_case_level(mapping_df)

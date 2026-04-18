@@ -233,7 +233,8 @@ run_fee_winrate_model <- function(dt) {
 write_latex_table <- function(results) {
   term_order <- c("did_treatment", "prior_admin_gov_exposure", "ddd_binary")
   tab <- copy(results)
-  setorder(tab, match(term, term_order), column_id)
+  tab[, term_order := match(term, term_order)]
+  setorder(tab, term_order, column_id)
 
   coef_row <- function(term_name) {
     block <- tab[term == term_name][order(column_id)]
@@ -312,7 +313,8 @@ write_latex_table <- function(results) {
 write_fee_appendix_table <- function(results) {
   term_order <- c("did_treatment", "prior_admin_gov_exposure", "ddd_binary")
   tab <- copy(results)
-  setorder(tab, match(term, term_order))
+  tab[, term_order := match(term, term_order)]
+  setorder(tab, term_order)
 
   coef_row <- function(term_name) {
     row <- tab[term == term_name]
