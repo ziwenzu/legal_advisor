@@ -69,32 +69,8 @@ client_mix_pre_expr <- function(enterprise_p, personal_p) {
 read_firm_panel <- function(path) {
   dt <- fread(path)
 
-  if (!"civil_fee_decisive_case_n" %in% names(dt)) {
-    fee_n_candidates <- intersect(
-      c("civil_fee_decisive_case_n_y", "civil_fee_decisive_case_n_x"),
-      names(dt)
-    )
-    if (length(fee_n_candidates) > 0) {
-      dt[, civil_fee_decisive_case_n := get(fee_n_candidates[1])]
-    }
-  }
-  if (!"civil_win_rate_fee_mean" %in% names(dt)) {
-    fee_mean_candidates <- intersect(
-      c("civil_win_rate_fee_mean_y", "civil_win_rate_fee_mean_x"),
-      names(dt)
-    )
-    if (length(fee_mean_candidates) > 0) {
-      dt[, civil_win_rate_fee_mean := get(fee_mean_candidates[1])]
-    }
-  }
-
   dt[, stack_firm_fe := sprintf("%s__%s", stack_id, firm_id)]
   dt[, stack_year_fe := sprintf("%s__%s", stack_id, year)]
-
-  dt[, log_civil_case_n := log1p(civil_case_n)]
-  dt[, log_firm_size := log1p(firm_size)]
-  dt[, log_enterprise_case_n := log1p(enterprise_case_n)]
-  dt[, log_personal_case_n := log1p(personal_case_n)]
 
   # Keep the event-study window aligned with the common [-5, 5] specification.
   dt[, event_time_window := fifelse(event_time < -5, NA_real_, fifelse(event_time > 5, NA_real_, event_time))]
@@ -389,7 +365,7 @@ build_main_table <- function(results_list, file_path) {
     paste(
       "\\item Note:",
       sprintf("Treated firms are procurement winners and controls are %s.", control_note),
-      "The rebuilt firm-level panel is aggregated from the raw one-document-one-firm winner-vs-runner-up sample. Quota-weighted market-size crosswalks are retained in the data as separate audit variables, and only outcomes with acceptable rebuilt pre-period diagnostics are retained in this table.",
+      "The rebuilt firm-level panel is aggregated from the raw one-document-one-firm winner-vs-runner-up sample, and only outcomes with acceptable rebuilt pre-period diagnostics are retained in this table.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

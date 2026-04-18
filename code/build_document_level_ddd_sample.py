@@ -22,6 +22,36 @@ OUT_CSV_FILE = ROOT / "data" / "output data" / "document_level_winner_vs_loser_d
 OUT_EXPOSURE_FILE = ROOT / "data" / "output data" / "admin_gov_firm_court_year_exposure.parquet"
 OUT_PAIR_AUDIT_FILE = ROOT / "data" / "output data" / "admin_gov_exposure_pre_civil_pair_audit.parquet"
 SUMMARY_FILE = ROOT / "data" / "output data" / "document_level_ddd_summary_20260417.md"
+DDD_OUTPUT_COLS = [
+    "year",
+    "case_uid",
+    "court",
+    "cause",
+    "law_firm",
+    "firm_id",
+    "stack_id",
+    "treated_firm",
+    "event_year",
+    "event_time",
+    "post",
+    "did_treatment",
+    "side",
+    "case_win_binary",
+    "case_decisive",
+    "opponent_has_lawyer",
+    "plaintiff_party_is_entity",
+    "defendant_party_is_entity",
+    "case_win_rate_fee",
+    "log_legal_reasoning_length_chars",
+    "legal_reasoning_share",
+    "lawyer_gender",
+    "lawyer_practice_years",
+    "lawyer_ccp",
+    "lawyer_edu",
+    "court_match_key",
+    "prior_admin_gov_exposure",
+    "has_pre_admin_civil_case_in_court",
+]
 
 DEFAULT_CHUNKSIZE = 200_000
 LEADING_NOISE = (
@@ -468,29 +498,13 @@ def merge_document_panel(
         how="left",
     )
 
-    fill_zero_cols = [
-        "admin_gov_case_n_year",
-        "admin_gov_mention_n_year",
-        "same_or_prior_admin_gov_case_n",
-        "same_or_prior_admin_gov_mention_n",
-        "prior_admin_gov_case_n",
-        "prior_admin_gov_mention_n",
-        "prior_admin_gov_exposure",
-        "same_or_prior_admin_gov_exposure",
-        "pre_admin_civil_case_n_in_court",
-        "same_year_admin_civil_case_n_in_court",
-        "post_admin_civil_case_n_in_court",
-        "has_pre_admin_civil_case_in_court",
-        "has_same_year_admin_civil_case_in_court",
-        "has_post_admin_civil_case_in_court",
-    ]
+    fill_zero_cols = ["prior_admin_gov_exposure", "has_pre_admin_civil_case_in_court"]
     for col in fill_zero_cols:
         out[col] = out[col].fillna(0)
-        if col.endswith("_n") or col.endswith("_year") or col.endswith("_exposure") or col.startswith("has_"):
+        if col.endswith("_exposure") or col.startswith("has_"):
             out[col] = out[col].astype(int)
 
-    out["has_court_match_key"] = out["court_match_key"].notna().astype(int)
-    return out
+    return out[DDD_OUTPUT_COLS].copy()
 
 
 def build_summary(
@@ -518,7 +532,7 @@ def build_summary(
         "",
         "## Coverage",
         f"- Document rows in clean input: `{len(doc):,}`",
-        f"- Document rows with usable `court_match_key`: `{int(final_panel['has_court_match_key'].sum()):,}`",
+        f"- Document rows with usable `court_match_key`: `{int(final_panel['court_match_key'].notna().sum()):,}`",
         f"- Unique document firms: `{final_panel['firm_id'].nunique():,}`",
         f"- Unique document courts after cleaning: `{final_panel.loc[final_panel['court_match_key'].notna(), 'court_match_key'].nunique():,}`",
         "",
@@ -537,7 +551,6 @@ def build_summary(
         "",
         "## Exposure in Final DDD Sample",
         f"- Rows with `prior_admin_gov_exposure = 1`: `{int(final_panel['prior_admin_gov_exposure'].sum()):,}`",
-        f"- Rows with `same_or_prior_admin_gov_exposure = 1`: `{int(final_panel['same_or_prior_admin_gov_exposure'].sum()):,}`",
         f"- Treated-post rows: `{len(treated_post):,}`",
         f"- Treated-post rows with prior exposure: `{int(treated_post['prior_admin_gov_exposure'].sum()):,}`",
         f"- Control-post rows: `{len(control_post):,}`",
@@ -551,9 +564,9 @@ def build_summary(
         "",
         "## Construction Notes",
         "- `prior_admin_gov_exposure` is court-specific and only turns on when the same `firm_id` previously appeared as defendant-side counsel in an administrative case at that same cleaned court key.",
-        "- The default timing is conservative: only prior years count. Same-year administrative appearances are stored separately in `admin_gov_case_n_year` and `same_or_prior_admin_gov_exposure`.",
+        "- The timing is conservative: only prior years count. Same-year administrative appearances are not folded into the saved exposure dummy.",
         "- Exposure is restricted to administrative appearances that happen in or after `first_contract_year`, so it is designed to proxy post-procurement recognition rather than preexisting familiarity.",
-        "- Pair-level audit columns (`has_pre_admin_civil_case_in_court`, `pre_admin_civil_case_n_in_court`) let us restrict the mechanism to courts where the firm already had civil business before its first observed government-side administrative appearance there.",
+        "- The saved DDD extension keeps only one additional court-specific mechanism variable beyond the clean document sample: whether the same firm-court pair had any pre-exposure civil presence before the first observed government-side administrative appearance there.",
     ]
     return "\n".join(lines) + "\n"
 
