@@ -442,6 +442,20 @@ def merge_document_panel(
     first_contract_year: pd.DataFrame,
     pair_audit: pd.DataFrame,
 ) -> pd.DataFrame:
+    doc = doc.drop(
+        columns=[
+            col
+            for col in [
+                "first_contract_year",
+                "first_admin_gov_exposure_year",
+                "first_admin_gov_exposure_year_x",
+                "first_admin_gov_exposure_year_y",
+            ]
+            if col in doc.columns
+        ],
+        errors="ignore",
+    )
+    pair_audit = pair_audit.drop(columns=["first_admin_gov_exposure_year"], errors="ignore")
     out = doc.merge(first_contract_year, on="firm_id", how="left")
     out = out.merge(
         exposure_panel,

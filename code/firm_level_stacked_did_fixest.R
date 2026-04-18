@@ -347,9 +347,7 @@ plot_client_mix_comparison <- function(enterprise_dt, personal_dt, enterprise_ef
 
 build_main_table <- function(results_list, file_path) {
   column_keys <- c(
-    "log_civil_case_n",
     "civil_win_rate_mean",
-    "log_firm_size",
     "avg_filing_to_hearing_days"
   )
 
@@ -364,27 +362,26 @@ build_main_table <- function(results_list, file_path) {
   obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
   r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[key]]$r2))
 
-  weight_row <- c("No", "No", "No", "No")
-  sample_row <- c("All firm-years", "Firm-years with decisive cases", "All firm-years", "Firm-years with civil cases")
+  sample_row <- c("Firm-years with decisive cases", "Firm-years with civil cases")
 
   lines <- c(
     "\\begin{table}[!htbp]",
     "\\centering",
-    "\\caption{Stacked DID Estimates for Law-Firm Outcomes}",
+    "\\caption{Stacked DID Estimates for Rebuilt Firm-Level Outcomes}",
     "\\label{tab:firm_level_stacked_did}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccc}",
+    "\\begin{tabular}{lcc}",
     "\\toprule",
-    " & (1) & (2) & (3) & (4) \\\\",
-    "Outcome & log(Civil Cases + 1) & Civil Win Rate & log(Firm Size + 1) & Avg. Hearing Time \\\\",
+    " & (1) & (2) \\\\",
+    "Outcome & Civil Win Rate & Avg. Hearing Time \\\\",
     "\\midrule",
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Firm FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -392,6 +389,7 @@ build_main_table <- function(results_list, file_path) {
     paste(
       "\\item Note:",
       sprintf("Treated firms are procurement winners and controls are %s.", control_note),
+      "The rebuilt firm-level panel is aggregated from the raw one-document-one-firm winner-vs-runner-up sample. Quota-weighted market-size crosswalks are retained in the data as separate audit variables, and only outcomes with acceptable rebuilt pre-period diagnostics are retained in this table.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -482,7 +480,7 @@ build_fee_winrate_appendix_table <- function(result, file_path) {
     paste(
       "\\item Note:",
       sprintf("Treated firms are procurement winners and controls are %s.", control_note),
-      "This appendix table replaces the binary decisive-case win rate with `civil_win_rate_fee_mean`, the firm-year mean of case-level fee-based win rates.",
+      "This appendix table replaces the binary decisive-case win rate with `civil_win_rate_fee_mean`, the firm-year mean of case-level fee-based win rates built from the rebuilt raw document sample.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -498,38 +496,15 @@ main <- function() {
   dt <- read_firm_panel(input_file)
 
   model_specs <- list(
-    log_civil_case_n = list(
-      label = "Log Civil Cases",
-      y_title = "Log Civil Cases",
-      sample_filter = NULL
-    ),
     civil_win_rate_mean = list(
       label = "Civil Win Rate",
       y_title = "Civil Win Rate",
       sample_filter = quote(civil_decisive_case_n > 0)
     ),
-    log_firm_size = list(
-      label = "Log Firm Size",
-      y_title = "Log Firm Size",
-      sample_filter = NULL
-    ),
     avg_filing_to_hearing_days = list(
       label = "Average Hearing Time",
       y_title = "Days to Hearing",
       sample_filter = quote(civil_case_n > 0)
-    )
-  )
-
-  mechanism_specs <- list(
-    log_enterprise_case_n = list(
-      label = "Log Enterprise Cases",
-      y_title = "Log Enterprise Cases",
-      sample_filter = NULL
-    ),
-    log_personal_case_n = list(
-      label = "Log Personal Cases",
-      y_title = "Log Personal Cases",
-      sample_filter = NULL
     )
   )
 
@@ -607,60 +582,6 @@ main <- function() {
   build_fee_winrate_appendix_table(
     result = fee_result,
     file_path = file.path(table_dir, build_output_name("firm_level_fee_winrate_appendix_table", "tex"))
-  )
-
-  mechanism_results <- list()
-  mechanism_event_results <- list()
-
-  for (outcome_name in names(mechanism_specs)) {
-    spec <- mechanism_specs[[outcome_name]]
-
-    main_model <- estimate_main_model(
-      dt = dt,
-      outcome_name = outcome_name,
-      sample_filter = spec$sample_filter
-    )
-
-    event_model <- estimate_event_model(
-      dt = dt,
-      outcome_name = outcome_name,
-      sample_filter = spec$sample_filter
-    )
-
-    main_coef <- extract_main_coef(main_model)
-    mechanism_results[[outcome_name]] <- main_coef
-    mechanism_event_results[[outcome_name]] <- extract_event_dt(event_model)
-    mechanism_results[[paste0(outcome_name, "_pretest")]] <- extract_pretest(event_model)
-
-    plot_event_study(
-      event_dt = mechanism_event_results[[outcome_name]],
-      outcome_label = spec$label,
-      y_title = spec$y_title,
-      main_effect = main_coef$estimate,
-      main_se = main_coef$se,
-      pre_p = mechanism_results[[paste0(outcome_name, "_pretest")]]$p_value,
-      file_path = file.path(
-        figure_dir,
-        build_output_name(sprintf("firm_level_%s_event_study", outcome_name), "pdf")
-      )
-    )
-  }
-
-  build_mechanism_table(
-    results_list = mechanism_results,
-    file_path = file.path(table_dir, build_output_name("firm_level_client_mix_mechanism_table", "tex"))
-  )
-
-  plot_client_mix_comparison(
-    enterprise_dt = mechanism_event_results[["log_enterprise_case_n"]],
-    personal_dt = mechanism_event_results[["log_personal_case_n"]],
-    enterprise_effect = mechanism_results[["log_enterprise_case_n"]]$estimate,
-    enterprise_se = mechanism_results[["log_enterprise_case_n"]]$se,
-    personal_effect = mechanism_results[["log_personal_case_n"]]$estimate,
-    personal_se = mechanism_results[["log_personal_case_n"]]$se,
-    enterprise_pre_p = mechanism_results[["log_enterprise_case_n_pretest"]]$p_value,
-    personal_pre_p = mechanism_results[["log_personal_case_n_pretest"]]$p_value,
-    file_path = file.path(figure_dir, build_output_name("firm_level_client_mix_comparison_event_study", "pdf"))
   )
 }
 

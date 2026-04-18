@@ -416,6 +416,8 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
     outcome_pl = load_case_outcome_overrides()
     drop_existing_cols = [
         "plaintiff_fee_share_sql",
+        "plaintiff_fee_share_sql_right",
+        "plaintiff_fee_share_sql_left",
         "case_fee_burden_share",
         "case_win_rate_fee",
         "case_decisive_override",
@@ -464,6 +466,20 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
                 & pl.col("case_win_binary_effective").is_not_null()
                 & pl.col("case_win_rate_fee").is_not_null()
                 & ((pl.col("case_win_rate_fee") >= 0.5).cast(pl.Int8) != pl.col("case_win_binary_effective"))
+            ).alias("fee_binary_inconsistent_effective")
+        )
+        .with_columns(
+            (
+                (pl.col("case_decisive") == 1)
+                & pl.col("case_win_binary").is_not_null()
+                & pl.col("case_win_rate_fee").is_not_null()
+                & ((pl.col("case_win_rate_fee") >= 0.5).cast(pl.Int8) != pl.col("case_win_binary"))
+            ).alias("fee_binary_inconsistent_raw")
+        )
+        .with_columns(
+            (
+                pl.col("fee_binary_inconsistent_effective")
+                | pl.col("fee_binary_inconsistent_raw")
             ).alias("fee_binary_inconsistent")
         )
         .with_columns(
@@ -479,6 +495,8 @@ def augment_case_level(mapping_df: pd.DataFrame) -> dict[str, float]:
             ]
         )
         .drop("fee_binary_inconsistent")
+        .drop("fee_binary_inconsistent_effective")
+        .drop("fee_binary_inconsistent_raw")
         .drop("case_decisive_effective")
         .drop("case_win_binary_effective")
         .drop("case_decisive_override")

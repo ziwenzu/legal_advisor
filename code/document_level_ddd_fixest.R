@@ -68,6 +68,10 @@ read_document_panel <- function(path) {
   dt[, defendant_party_is_entity := as.integer(defendant_party_is_entity)]
   dt[, opponent_has_lawyer := as.integer(opponent_has_lawyer)]
   dt[, case_decisive := as.integer(case_decisive)]
+  if ("case_quota_weight" %in% names(dt)) {
+    dt[, case_quota_weight := as.numeric(case_quota_weight)]
+    dt[is.na(case_quota_weight) | case_quota_weight <= 0, case_quota_weight := 1]
+  }
   dt[, prior_admin_gov_exposure := as.integer(prior_admin_gov_exposure)]
   dt[, has_pre_admin_civil_case_in_court := as.integer(has_pre_admin_civil_case_in_court)]
 
@@ -297,6 +301,7 @@ write_latex_table <- function(results) {
     "\\footnotesize",
     paste0(
       "\\item Note: The sample keeps all unexposed rows and restricts exposed firm-court pairs to those with at least one civil case in that same court before the first observed government-side administrative appearance there. ",
+      "`case_quota_weight` is carried in the rebuilt data for audit and market-size checks, but the strict DDD estimates use the raw winner-vs-runner-up document sample. ",
       "All columns include firm FE, stack $\\\\times$ year FE, court $\\\\times$ year FE, cause $\\\\times$ side FE, case controls, and lawyer-year attribute bins. ",
       "Standard errors are two-way clustered by firm and cleaned court. ",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
@@ -362,6 +367,7 @@ write_fee_appendix_table <- function(results) {
     "\\footnotesize",
     paste0(
       "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. ",
+      "The estimates use the raw winner-vs-runner-up document sample; `case_quota_weight` is kept in the rebuilt data only for audit and market-size cross-checks. ",
       "The sample keeps all unexposed rows and restricts exposed firm-court pairs to those with at least one civil case in that same court before the first observed government-side administrative appearance there. ",
       "Standard errors are two-way clustered by firm and cleaned court. ",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."

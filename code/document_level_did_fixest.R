@@ -72,6 +72,10 @@ read_document_panel <- function(path) {
   dt[, defendant_party_is_entity := as.integer(defendant_party_is_entity)]
   dt[, opponent_has_lawyer := as.integer(opponent_has_lawyer)]
   dt[, case_decisive := as.integer(case_decisive)]
+  if ("case_quota_weight" %in% names(dt)) {
+    dt[, case_quota_weight := as.numeric(case_quota_weight)]
+    dt[is.na(case_quota_weight) | case_quota_weight <= 0, case_quota_weight := 1]
+  }
 
   dt[, lawyer_female := fifelse(lawyer_gender == "女", 1L, 0L, na = NA_integer_)]
   dt[, lawyer_ccp_bin := fifelse(lawyer_ccp == 1, 1L, 0L, na = NA_integer_)]
@@ -396,7 +400,7 @@ build_main_table <- function(main_results, robust_results, file_path) {
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: `All documents` uses the full one-document-one-law-firm sample. `Decisive cases` uses documents that can be coded into a binary win/loss outcome. Standard errors are clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: `All documents` uses the full one-document-one-law-firm sample. `Decisive cases` uses documents that can be coded into a binary win/loss outcome. `case_quota_weight` is carried in the rebuilt data for audit and market-size checks, but the main document-level estimates use the raw winner-vs-runner-up analysis sample. Standard errors are clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -444,7 +448,7 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. Standard errors are clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. The estimates use the raw winner-vs-runner-up document sample; `case_quota_weight` is kept in the rebuilt data only for audit and market-size cross-checks. Standard errors are clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
