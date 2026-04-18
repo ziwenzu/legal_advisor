@@ -196,6 +196,30 @@ estimate_attribute_model <- function(dt, outcome_name, sample_filter = NULL) {
   feols(formula_obj, data = work_dt, cluster = ~ firm_id + stack_id)
 }
 
+estimate_single_attribute_model <- function(dt, outcome_name, attribute_term, sample_filter = NULL, is_continuous = FALSE) {
+  work_dt <- copy(dt)
+
+  keep_mask <- !is.na(work_dt[[outcome_name]]) & !is.na(work_dt[[attribute_term]])
+  if (!is.null(sample_filter)) {
+    keep_mask <- keep_mask & work_dt[, eval(sample_filter)]
+  }
+  work_dt <- work_dt[keep_mask]
+
+  rhs_terms <- c("did_treatment")
+  if (is_continuous) {
+    rhs_terms <- c(rhs_terms, attribute_term)
+  }
+  rhs_terms <- c(rhs_terms, sprintf("did_treatment:%s", attribute_term), control_rhs)
+
+  formula_obj <- build_formula(
+    outcome_name = outcome_name,
+    rhs_terms = paste(rhs_terms, collapse = " + "),
+    fe_terms = "firm_id + stack_year_fe + cause_side_fe + court + year_gender_fe + year_ccp_fe + year_edu_fe"
+  )
+
+  feols(formula_obj, data = work_dt, cluster = ~ firm_id + stack_id)
+}
+
 extract_main_coef <- function(model, target_term = "did_treatment") {
   ct <- as.data.table(coeftable(model), keep.rownames = "term")
   row <- ct[ct$term == target_term, ]
@@ -324,60 +348,55 @@ plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_
   )
 }
 
-build_main_table <- function(results_list, file_path, main_note) {
+build_main_table <- function(main_results, robust_results, file_path) {
   column_keys <- c(
     "legal_reasoning_share",
     "log_legal_reasoning_length_chars",
     "case_win_binary"
   )
 
-  coef_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0(fmt_num(res$estimate), stars(res$p_value))
-  })
-  se_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0("(", fmt_num(res$se), ")")
-  })
-  obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
-  r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[key]]$r2))
+  all_results <- c(
+    main_results[column_keys],
+    robust_results[column_keys]
+  )
+
+  coef_row <- sapply(all_results, function(res) paste0(fmt_num(res$estimate), stars(res$p_value)))
+  se_row <- sapply(all_results, function(res) paste0("(", fmt_num(res$se), ")"))
+  obs_row <- sapply(all_results, function(res) fmt_int(res$n_obs))
+  r2_row <- sapply(all_results, function(res) fmt_num(res$r2))
+  sample_row <- c("All documents", "All documents", "Decisive cases", "All documents", "All documents", "Decisive cases")
 
   lines <- c(
     "\\begin{table}[!htbp]",
     "\\centering",
-    "\\caption{Document-Level DID Estimates for Winner Versus Loser Law Firms}",
+    "\\caption{Document-Level DID Estimates}",
     "\\label{tab:document_level_did_main}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lccc}",
+    "\\begin{tabular}{lcccccc}",
     "\\toprule",
-    " & (1) & (2) & (3) \\\\",
-    "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
+    " & \\multicolumn{3}{c}{Stack $\\times$ Year FE} & \\multicolumn{3}{c}{Court $\\times$ Year FE} \\\\",
+    "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}",
+    " & (1) & (2) & (3) & (4) & (5) & (6) \\\\",
+    "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
     "\\midrule",
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Firm FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Court FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Clustered SE &", paste(rep("Firm and stack", 3), collapse = " & "), "\\\\"),
+    paste("Sample &", paste(sample_row, collapse = " & "), "\\\\"),
+    paste("Firm FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year FE &", paste(c("Yes", "Yes", "Yes", "No", "No", "No"), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year FE &", paste(c("No", "No", "No", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
+    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Court FE &", paste(c("Yes", "Yes", "Yes", "No", "No", "No"), collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    paste(
-      "\\item Note: The sample contains only current clean winner-versus-loser firms matched to `winner_vs_runnerup_case = 1` documents.",
-      "Each `case_uid` contributes only one retained law-firm record: one winner if present, otherwise one loser.",
-      "All columns include opponent-lawyer and plaintiff/defendant entity controls.",
-      "Lawyer controls include practice years and attribute-specific year fixed effects for gender, party membership, and education.",
-      "Party-type fields are omitted because they are exactly redundant with the entity indicators in this clean sample.",
-      "Column 3 is estimated on decisive cases only.",
-      main_note,
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
+    "\\item Note: `All documents` uses the full one-document-one-law-firm sample. `Decisive cases` uses documents that can be coded into a binary win/loss outcome. Standard errors are clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -386,55 +405,46 @@ build_main_table <- function(results_list, file_path, main_note) {
   writeLines(lines, con = file_path)
 }
 
-build_robustness_table <- function(results_list, file_path) {
-  column_keys <- c(
-    "legal_reasoning_share",
-    "log_legal_reasoning_length_chars",
-    "case_win_binary"
+build_fee_winrate_appendix_table <- function(main_result, robust_result, file_path) {
+  coef_row <- c(
+    paste0(fmt_num(main_result$estimate), stars(main_result$p_value)),
+    paste0(fmt_num(robust_result$estimate), stars(robust_result$p_value))
   )
-
-  coef_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0(fmt_num(res$estimate), stars(res$p_value))
-  })
-  se_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0("(", fmt_num(res$se), ")")
-  })
-  obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
-  r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[key]]$r2))
+  se_row <- c(
+    paste0("(", fmt_num(main_result$se), ")"),
+    paste0("(", fmt_num(robust_result$se), ")")
+  )
+  obs_row <- c(fmt_int(main_result$n_obs), fmt_int(robust_result$n_obs))
+  r2_row <- c(fmt_num(main_result$r2), fmt_num(robust_result$r2))
 
   lines <- c(
     "\\begin{table}[!htbp]",
     "\\centering",
-    "\\caption{Document-Level DID Robustness with Court-by-Year Fixed Effects}",
-    "\\label{tab:document_level_did_court_year}",
+    "\\caption{Document-Level Fee-Based Win-Rate Robustness}",
+    "\\label{tab:document_level_fee_winrate_appendix}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lccc}",
+    "\\begin{tabular}{lcc}",
     "\\toprule",
-    " & (1) & (2) & (3) \\\\",
-    "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
+    " & (1) & (2) \\\\",
+    "Outcome & Stack $\\times$ Year FE & Court $\\times$ Year FE \\\\",
     "\\midrule",
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Firm FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Court $\\times$ Year FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
-    paste("Clustered SE &", paste(rep("Firm and court", 3), collapse = " & "), "\\\\"),
+    paste("Sample &", paste(rep("Decisive cases with fee share", 2), collapse = " & "), "\\\\"),
+    paste("Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year FE &", paste(c("Yes", "No"), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year FE &", paste(c("No", "Yes"), collapse = " & "), "\\\\"),
+    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    paste(
-      "\\item Note: This table replaces stack-by-year fixed effects with court-by-year fixed effects.",
-      "The sample and controls match the main specification, including one retained law-firm record per `case_uid`, lawyer practice-years control, and lawyer-attribute-by-year fixed effects for gender, party membership, and education.",
-      "Column 3 is estimated on decisive cases only.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
+    "\\item Note: This appendix table replaces the binary win/loss outcome with `case_win_rate_fee`, the represented side's fee-based win-rate measure constructed from the SQL `shoulifeiyuangaobizhong` field. Standard errors are clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -444,75 +454,119 @@ build_robustness_table <- function(results_list, file_path) {
 }
 
 build_attribute_table <- function(results_list, file_path) {
-  column_keys <- c("legal_reasoning_share", "case_win_binary")
-  row_terms <- c(
-    "did_treatment",
-    "did_treatment:lawyer_ccp_bin",
-    "did_treatment:lawyer_high_edu",
-    "did_treatment:lawyer_practice_years_std"
+  column_keys <- c("legal_reasoning_share", "log_legal_reasoning_length_chars", "case_win_binary")
+  panel_order <- c("ccp", "gender", "seniority", "masterplus")
+  panel_titles <- c(
+    ccp = "Panel A. CCP",
+    gender = "Panel B. Female",
+    seniority = "Panel C. Seniority",
+    masterplus = "Panel D. Master and Above"
   )
   row_labels <- c(
-    "Winner $\\times$ Post",
-    "Winner $\\times$ Post $\\times$ CCP",
-    "Winner $\\times$ Post $\\times$ High Edu",
-    "Winner $\\times$ Post $\\times$ Practice Years (std.)"
+    ccp = "Winner $\\times$ Post $\\times$ CCP",
+    gender = "Winner $\\times$ Post $\\times$ Female",
+    seniority = "Winner $\\times$ Post $\\times$ Seniority (std.)",
+    masterplus = "Winner $\\times$ Post $\\times$ Master and Above"
   )
 
   lines <- c(
     "\\begin{table}[!htbp]",
     "\\centering",
-    "\\caption{Suggestive Heterogeneity by Random Lawyer Attributes}",
+    "\\caption{Document-Level Heterogeneity by Lawyer Attributes}",
     "\\label{tab:document_level_attribute_heterogeneity}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lcc}",
+    "\\begin{tabular}{lccc}",
     "\\toprule",
-    " & (1) & (2) \\\\",
-    "Outcome & Reasoning Share & Case Win Binary \\\\",
+    " & (1) & (2) & (3) \\\\",
+    "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
     "\\midrule"
   )
 
-  for (i in seq_along(row_terms)) {
-    term <- row_terms[[i]]
+  for (panel_key in panel_order) {
     coef_row <- sapply(column_keys, function(key) {
-      res <- results_list[[key]][[term]]
+      res <- results_list[[panel_key]][[key]]
       paste0(fmt_num(res$estimate), stars(res$p_value))
     })
     se_row <- sapply(column_keys, function(key) {
-      res <- results_list[[key]][[term]]
+      res <- results_list[[panel_key]][[key]]
       paste0("(", fmt_num(res$se), ")")
     })
+    obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[panel_key]][[key]]$n_obs))
+    r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[panel_key]][[key]]$r2))
+
     lines <- c(
       lines,
-      paste(row_labels[[i]], "&", paste(coef_row, collapse = " & "), "\\\\"),
-      paste("&", paste(se_row, collapse = " & "), "\\\\")
+      "\\addlinespace",
+      paste0("\\multicolumn{4}{l}{\\textit{", panel_titles[[panel_key]], "}} \\\\"),
+      paste(row_labels[[panel_key]], "&", paste(coef_row, collapse = " & "), "\\\\"),
+      paste("&", paste(se_row, collapse = " & "), "\\\\"),
+      paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
+      paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\")
     )
   }
 
-  obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]][["did_treatment"]]$n_obs))
-  r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[key]][["did_treatment"]]$r2))
-
   lines <- c(
     lines,
-    "\\addlinespace",
-    paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
-    paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Court FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Lawyer-Linked Sample &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    paste(
-      "\\item Note: These interaction estimates are suggestive heterogeneity, not causal mediation.",
-      "Each firm is assigned one stable random lawyer from the lawyer list, and the coefficient heterogeneity is estimated within the lawyer-linked sample.",
-      "High education is defined as master's or PhD training.",
-      "Column 2 is estimated on decisive cases only.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
+    "\\item Note: Each row reports the coefficient on Winner $\\times$ Post $\\times$ attribute. CCP equals 1 if the matched lawyer is a Communist Party member. Female equals 1 if the matched lawyer is a woman. Master and Above equals 1 if the matched lawyer has a master's or PhD degree. Seniority is standardized lawyer practice years. Case Win Binary uses decisive cases only. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\end{tablenotes}",
+    "\\end{threeparttable}",
+    "\\end{table}"
+  )
+
+  writeLines(lines, con = file_path)
+}
+
+build_attribute_fee_appendix_table <- function(results_list, file_path) {
+  panel_order <- c("ccp", "gender", "seniority", "masterplus")
+  panel_titles <- c(
+    ccp = "Panel A. CCP",
+    gender = "Panel B. Female",
+    seniority = "Panel C. Seniority",
+    masterplus = "Panel D. Master and Above"
+  )
+  row_labels <- c(
+    ccp = "Winner $\\times$ Post $\\times$ CCP",
+    gender = "Winner $\\times$ Post $\\times$ Female",
+    seniority = "Winner $\\times$ Post $\\times$ Seniority (std.)",
+    masterplus = "Winner $\\times$ Post $\\times$ Master and Above"
+  )
+
+  lines <- c(
+    "\\begin{table}[!htbp]",
+    "\\centering",
+    "\\caption{Document-Level Fee-Based Win-Rate Heterogeneity}",
+    "\\label{tab:document_level_fee_winrate_heterogeneity}",
+    "\\begin{threeparttable}",
+    "\\begin{tabular}{lc}",
+    "\\toprule",
+    " & Case Fee Win Rate \\\\",
+    "\\midrule"
+  )
+
+  for (panel_key in panel_order) {
+    res <- results_list[[panel_key]]
+    lines <- c(
+      lines,
+      "\\addlinespace",
+      paste0("\\multicolumn{2}{l}{\\textit{", panel_titles[[panel_key]], "}} \\\\"),
+      paste(row_labels[[panel_key]], "&", paste0(fmt_num(res$estimate), stars(res$p_value)), "\\\\"),
+      paste("&", paste0("(", fmt_num(res$se), ")"), "\\\\"),
+      paste("Observations &", fmt_int(res$n_obs), "\\\\"),
+      paste("$R^2$ &", fmt_num(res$r2), "\\\\")
+    )
+  }
+
+  lines <- c(
+    lines,
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\begin{tablenotes}[flushleft]",
+    "\\footnotesize",
+    "\\item Note: Each row reports the coefficient on Winner $\\times$ Post $\\times$ attribute using `case_win_rate_fee` as the outcome. The sample is restricted to decisive cases with non-missing fee-based win rates. Standard errors are clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"
@@ -538,10 +592,13 @@ main <- function() {
       sample_filter = quote(case_decisive == 1)
     )
   )
+  fee_winrate_spec <- list(
+    y_title = "Case Fee Win Rate",
+    sample_filter = quote(case_decisive == 1 & !is.na(case_win_rate_fee))
+  )
 
   main_results <- list()
   robust_results <- list()
-  diagnostics_rows <- list()
 
   for (outcome_name in names(model_specs)) {
     spec <- model_specs[[outcome_name]]
@@ -558,27 +615,6 @@ main <- function() {
     robust_pre <- extract_pretest(robust_event)
     robust_results[[outcome_name]] <- robust_coef
 
-    diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.table(
-      outcome = outcome_name,
-      spec = "main",
-      estimate = main_coef$estimate,
-      se = main_coef$se,
-      p_value = main_coef$p_value,
-      pretrend_p = main_pre$p_value,
-      n_obs = main_coef$n_obs,
-      r2 = main_coef$r2
-    )
-    diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.table(
-      outcome = outcome_name,
-      spec = "court_year",
-      estimate = robust_coef$estimate,
-      se = robust_coef$se,
-      p_value = robust_coef$p_value,
-      pretrend_p = robust_pre$p_value,
-      n_obs = robust_coef$n_obs,
-      r2 = robust_coef$r2
-    )
-
     plot_event_study(
       event_dt = extract_event_dt(main_event),
       outcome_name = outcome_name,
@@ -594,26 +630,61 @@ main <- function() {
   }
 
   build_main_table(
-    results_list = main_results,
-    file_path = file.path(table_dir, build_output_name("document_level_did_main_table", "tex")),
-    main_note = "The main specification absorbs firm fixed effects, stack-by-year fixed effects, cause-by-side fixed effects, and court fixed effects, with two-way clustering by firm and stack."
+    main_results = main_results,
+    robust_results = robust_results,
+    file_path = file.path(table_dir, build_output_name("document_level_did_main_table", "tex"))
   )
 
-  build_robustness_table(
-    results_list = robust_results,
-    file_path = file.path(table_dir, build_output_name("document_level_did_court_year_robustness_table", "tex"))
+  fee_main_model <- estimate_model(dt, "case_win_rate_fee", sample_filter = fee_winrate_spec$sample_filter, fe_variant = "main")
+  fee_main_event <- estimate_event_model(dt, "case_win_rate_fee", sample_filter = fee_winrate_spec$sample_filter, fe_variant = "main")
+  fee_main_coef <- extract_main_coef(fee_main_model)
+  fee_main_pre <- extract_pretest(fee_main_event)
+
+  fee_robust_model <- estimate_model(dt, "case_win_rate_fee", sample_filter = fee_winrate_spec$sample_filter, fe_variant = "court_year")
+  fee_robust_coef <- extract_main_coef(fee_robust_model)
+
+  plot_event_study(
+    event_dt = extract_event_dt(fee_main_event),
+    outcome_name = "case_win_rate_fee",
+    y_title = fee_winrate_spec$y_title,
+    main_effect = fee_main_coef$estimate,
+    main_se = fee_main_coef$se,
+    pre_p = fee_main_pre$p_value,
+    file_path = file.path(
+      figure_dir,
+      build_output_name("document_level_case_fee_win_rate_event_study", "pdf")
+    )
+  )
+
+  build_fee_winrate_appendix_table(
+    main_result = fee_main_coef,
+    robust_result = fee_robust_coef,
+    file_path = file.path(table_dir, build_output_name("document_level_fee_winrate_appendix_table", "tex"))
+  )
+
+  attribute_specs <- list(
+    ccp = list(term = "lawyer_ccp_bin", label = "did_treatment:lawyer_ccp_bin", is_continuous = FALSE),
+    gender = list(term = "lawyer_female", label = "did_treatment:lawyer_female", is_continuous = FALSE),
+    seniority = list(term = "lawyer_practice_years_std", label = "did_treatment:lawyer_practice_years_std", is_continuous = TRUE),
+    masterplus = list(term = "lawyer_high_edu", label = "did_treatment:lawyer_high_edu", is_continuous = FALSE)
   )
 
   attribute_results <- list()
-  for (outcome_name in c("legal_reasoning_share", "case_win_binary")) {
-    sample_filter <- if (outcome_name == "case_win_binary") quote(case_decisive == 1) else NULL
-    model <- estimate_attribute_model(dt, outcome_name, sample_filter = sample_filter)
-    attribute_results[[outcome_name]] <- list(
-      did_treatment = extract_main_coef(model, "did_treatment"),
-      `did_treatment:lawyer_ccp_bin` = extract_main_coef(model, "did_treatment:lawyer_ccp_bin"),
-      `did_treatment:lawyer_high_edu` = extract_main_coef(model, "did_treatment:lawyer_high_edu"),
-      `did_treatment:lawyer_practice_years_std` = extract_main_coef(model, "did_treatment:lawyer_practice_years_std")
-    )
+  for (attr_name in names(attribute_specs)) {
+    attr_spec <- attribute_specs[[attr_name]]
+    attribute_results[[attr_name]] <- list()
+
+    for (outcome_name in names(model_specs)) {
+      sample_filter <- model_specs[[outcome_name]]$sample_filter
+      model <- estimate_single_attribute_model(
+        dt = dt,
+        outcome_name = outcome_name,
+        attribute_term = attr_spec$term,
+        sample_filter = sample_filter,
+        is_continuous = attr_spec$is_continuous
+      )
+      attribute_results[[attr_name]][[outcome_name]] <- extract_main_coef(model, attr_spec$label)
+    }
   }
 
   build_attribute_table(
@@ -621,10 +692,22 @@ main <- function() {
     file_path = file.path(table_dir, build_output_name("document_level_attribute_heterogeneity_table", "tex"))
   )
 
-  diagnostics <- rbindlist(diagnostics_rows, use.names = TRUE)
-  fwrite(
-    diagnostics,
-    file = file.path(table_dir, build_output_name("document_level_result_diagnostics", "csv"))
+  fee_attribute_results <- list()
+  for (attr_name in names(attribute_specs)) {
+    attr_spec <- attribute_specs[[attr_name]]
+    model <- estimate_single_attribute_model(
+      dt = dt,
+      outcome_name = "case_win_rate_fee",
+      attribute_term = attr_spec$term,
+      sample_filter = fee_winrate_spec$sample_filter,
+      is_continuous = attr_spec$is_continuous
+    )
+    fee_attribute_results[[attr_name]] <- extract_main_coef(model, attr_spec$label)
+  }
+
+  build_attribute_fee_appendix_table(
+    results_list = fee_attribute_results,
+    file_path = file.path(table_dir, build_output_name("document_level_fee_winrate_heterogeneity_appendix_table", "tex"))
   )
 }
 

@@ -193,6 +193,8 @@ def build_case_mix_by_firm_year(lookup: dict[str, tuple[str, str]]) -> pd.DataFr
         "side",
         "plaintiff_party_is_entity",
         "defendant_party_is_entity",
+        "case_decisive",
+        "case_win_rate_fee",
     ]
 
     for chunk in pd.read_csv(CASE_LEVEL_FILE, usecols=usecols, chunksize=1_000_000):
@@ -205,12 +207,22 @@ def build_case_mix_by_firm_year(lookup: dict[str, tuple[str, str]]) -> pd.DataFr
             chunk["defendant_party_is_entity"],
         ).astype(int)
         chunk["personal_case"] = 1 - chunk["enterprise_case"]
+        chunk["case_decisive"] = pd.to_numeric(chunk["case_decisive"], errors="coerce").fillna(0).astype(int)
+        chunk["case_win_rate_fee"] = pd.to_numeric(chunk["case_win_rate_fee"], errors="coerce")
+        chunk["fee_winrate_available"] = (
+            chunk["case_decisive"].eq(1) & chunk["case_win_rate_fee"].notna()
+        ).astype(int)
+        chunk["fee_winrate_sum"] = chunk["case_win_rate_fee"].where(
+            chunk["fee_winrate_available"].eq(1), 0.0
+        )
         agg = (
             chunk.groupby(["firm_id", "year"], as_index=False)
             .agg(
                 civil_case_n_case=("firm_id", "size"),
                 enterprise_case_n=("enterprise_case", "sum"),
                 personal_case_n=("personal_case", "sum"),
+                civil_fee_decisive_case_n=("fee_winrate_available", "sum"),
+                civil_win_rate_fee_sum=("fee_winrate_sum", "sum"),
             )
         )
         pieces.append(agg)
@@ -225,6 +237,8 @@ def build_case_mix_by_firm_year(lookup: dict[str, tuple[str, str]]) -> pd.DataFr
             civil_case_n_case=("civil_case_n_case", "sum"),
             enterprise_case_n=("enterprise_case_n", "sum"),
             personal_case_n=("personal_case_n", "sum"),
+            civil_fee_decisive_case_n=("civil_fee_decisive_case_n", "sum"),
+            civil_win_rate_fee_sum=("civil_win_rate_fee_sum", "sum"),
         )
     )
     return out
@@ -514,7 +528,14 @@ def build_balanced_panel(membership: pd.DataFrame, firm_year: pd.DataFrame, attr
             balanced[col] = balanced[col].fillna(balanced[raw_col])
             balanced = balanced.drop(columns=[raw_col])
 
-    for col in ["civil_case_n", "civil_win_n_binary", "civil_decisive_case_n", "avg_filing_to_hearing_days"]:
+    for col in [
+        "civil_case_n",
+        "civil_win_n_binary",
+        "civil_decisive_case_n",
+        "civil_fee_decisive_case_n",
+        "civil_win_rate_fee_sum",
+        "avg_filing_to_hearing_days",
+    ]:
         balanced[col] = balanced[col].fillna(0)
 
     balanced = balanced.merge(case_mix, on=["firm_id", "year"], how="left")
@@ -526,8 +547,16 @@ def build_balanced_panel(membership: pd.DataFrame, firm_year: pd.DataFrame, attr
     pre_birth = birth_year.notna() & (balanced["year"] < birth_year)
     balanced.loc[pre_birth, "firm_size"] = 0
 
-    for col in ["civil_case_n", "civil_win_n_binary", "civil_decisive_case_n", "enterprise_case_n", "personal_case_n"]:
+    for col in [
+        "civil_case_n",
+        "civil_win_n_binary",
+        "civil_decisive_case_n",
+        "civil_fee_decisive_case_n",
+        "enterprise_case_n",
+        "personal_case_n",
+    ]:
         balanced[col] = balanced[col].fillna(0).astype(int)
+    balanced["civil_win_rate_fee_sum"] = balanced["civil_win_rate_fee_sum"].fillna(0.0)
 
     use_case_total = balanced["civil_case_n_case"] > 0
     balanced.loc[use_case_total, "civil_case_n"] = balanced.loc[use_case_total, "civil_case_n_case"]
@@ -539,6 +568,11 @@ def build_balanced_panel(membership: pd.DataFrame, firm_year: pd.DataFrame, attr
         balanced["civil_decisive_case_n"] > 0,
         balanced["civil_win_n_binary"] / balanced["civil_decisive_case_n"],
         0.0,
+    )
+    balanced["civil_win_rate_fee_mean"] = np.where(
+        balanced["civil_fee_decisive_case_n"] > 0,
+        balanced["civil_win_rate_fee_sum"] / balanced["civil_fee_decisive_case_n"],
+        np.nan,
     )
     balanced["avg_filing_to_hearing_days"] = np.where(
         balanced["civil_case_n"] > 0,
@@ -621,6 +655,8 @@ def build_final_panel() -> tuple[pd.DataFrame, pd.DataFrame]:
         "civil_win_n_binary",
         "civil_decisive_case_n",
         "civil_win_rate_mean",
+        "civil_fee_decisive_case_n",
+        "civil_win_rate_fee_mean",
         "avg_filing_to_hearing_days",
         "enterprise_case_n",
         "personal_case_n",

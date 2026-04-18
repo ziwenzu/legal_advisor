@@ -14,6 +14,7 @@ import pyreadstat
 ROOT = Path(__file__).resolve().parents[1]
 FIRM_FILE = ROOT / "data" / "output data" / "firm_level.csv"
 CASE_FILE = ROOT / "data" / "output data" / "case_level.csv"
+LITIGATION_SIDE_FILE = ROOT / "data" / "temp data" / "litigation_panels_full" / "litigation_case_side_dedup.parquet"
 LAWYER_FILE = ROOT / "_archive" / "project_inputs" / "lawyer_list" / "lawyer_new" / "lawyers.dta"
 OUT_DOC_FILE = ROOT / "data" / "output data" / "document_level_winner_vs_loser_clean.parquet"
 OUT_DOC_CSV_FILE = ROOT / "data" / "output data" / "document_level_winner_vs_loser_clean.csv"
@@ -61,10 +62,14 @@ CASE_BASE_COLS = [
     "opponent_has_lawyer",
     "plaintiff_party_is_entity",
     "defendant_party_is_entity",
+    "plaintiff_fee_share_sql",
+    "case_fee_burden_share",
+    "case_win_rate_fee",
     "document_length_chars",
     "legal_reasoning_length_chars",
     "legal_reasoning_share",
 ]
+DECISIVE_OVERRIDE_OUTCOME_CLASSES = ("plaintiff_win", "plaintiff_loss")
 
 
 def clean_name(name: object) -> str:
@@ -214,18 +219,46 @@ def match_random_lawyer(firm_meta: pd.DataFrame, lawyers: pd.DataFrame) -> pd.Da
     return pd.DataFrame(out_rows)
 
 
+def load_case_outcome_overrides() -> pl.LazyFrame:
+    return (
+        pl.scan_parquet(LITIGATION_SIDE_FILE)
+        .select(["case_uid", "side", "outcome_class", "side_win"])
+        .group_by(["case_uid", "side"])
+        .agg(
+            [
+                pl.col("outcome_class").drop_nulls().first().alias("outcome_class"),
+                pl.col("side_win").drop_nulls().first().cast(pl.Int8).alias("side_win"),
+            ]
+        )
+        .with_columns(
+            pl.col("outcome_class")
+            .is_in(DECISIVE_OVERRIDE_OUTCOME_CLASSES)
+            .fill_null(False)
+            .alias("case_decisive_override")
+        )
+        .select(["case_uid", "side", "side_win", "case_decisive_override"])
+    )
+
+
 def build_case_sample(firm_meta: pd.DataFrame, lawyer_match: pd.DataFrame) -> pl.DataFrame:
     meta_pl = pl.from_pandas(firm_meta)
     lawyer_pl = pl.from_pandas(lawyer_match)
+    outcome_pl = load_case_outcome_overrides()
 
     docs = (
         pl.scan_csv(CASE_FILE)
         .select(CASE_BASE_COLS)
+        .join(outcome_pl, on=["case_uid", "side"], how="left")
         .join(meta_pl.lazy(), on="law_firm", how="inner")
         .filter(pl.col("winner_vs_runnerup_case") == 1)
         .join(lawyer_pl.lazy(), on="law_firm", how="left")
         .with_columns(
             [
+                pl.when(pl.col("case_decisive_override"))
+                .then(pl.lit(1))
+                .otherwise(pl.col("case_decisive"))
+                .cast(pl.Int8)
+                .alias("case_decisive_clean"),
                 pl.when(pl.col("treated_firm") == 1)
                 .then(pl.lit("winner"))
                 .otherwise(pl.lit("loser"))
@@ -241,7 +274,9 @@ def build_case_sample(firm_meta: pd.DataFrame, lawyer_match: pd.DataFrame) -> pl
                 )
                 .cast(pl.Int16)
                 .alias("lawyer_practice_years"),
-                pl.when(pl.col("case_decisive") == 1)
+                pl.when(pl.col("case_decisive_override") & pl.col("side_win").is_not_null())
+                .then(pl.col("side_win"))
+                .when(pl.col("case_decisive") == 1)
                 .then(pl.col("case_win_binary"))
                 .otherwise(None)
                 .cast(pl.Int8)
@@ -272,10 +307,13 @@ def build_case_sample(firm_meta: pd.DataFrame, lawyer_match: pd.DataFrame) -> pl
             "did_treatment",
             "side",
             pl.col("case_win_binary_clean").alias("case_win_binary"),
-            "case_decisive",
+            pl.col("case_decisive_clean").alias("case_decisive"),
             "opponent_has_lawyer",
             "plaintiff_party_is_entity",
             "defendant_party_is_entity",
+            "plaintiff_fee_share_sql",
+            "case_fee_burden_share",
+            "case_win_rate_fee",
             "document_length_chars",
             "legal_reasoning_length_chars",
             "log_legal_reasoning_length_chars",
@@ -304,6 +342,7 @@ def build_summary(docs: pl.DataFrame, lawyer_match_sample: pd.DataFrame) -> str:
             pl.col("legal_reasoning_share").mean().alias("reason_share_mean"),
             pl.col("legal_reasoning_share").median().alias("reason_share_median"),
             pl.col("case_win_binary").mean().alias("case_win_mean"),
+            pl.col("case_win_rate_fee").mean().alias("case_fee_winrate_mean"),
         ]
     ).to_pandas().iloc[0]
     treatment_counts = (
@@ -350,6 +389,7 @@ def build_summary(docs: pl.DataFrame, lawyer_match_sample: pd.DataFrame) -> str:
         f"- Mean `legal_reasoning_share`: `{summary['reason_share_mean']:.4f}`",
         f"- Median `legal_reasoning_share`: `{summary['reason_share_median']:.4f}`",
         f"- Mean `case_win_binary`: `{summary['case_win_mean']:.4f}`",
+        f"- Mean `case_win_rate_fee`: `{summary['case_fee_winrate_mean']:.4f}`",
         "",
         "Treatment/post cells:",
     ]
@@ -375,7 +415,9 @@ def build_summary(docs: pl.DataFrame, lawyer_match_sample: pd.DataFrame) -> str:
             "",
             "Variable note:",
             "- `lawyer_practice_years = max(year - lawyer_start_year, 0)`",
-            "- `case_win_binary` is set to missing whenever `case_decisive = 0`",
+            "- Rows flagged upstream as `plaintiff_win` or `plaintiff_loss` are forced into `case_decisive = 1` and receive `case_win_binary = side_win` from the litigation case-side panel",
+            "- Outside that override, `case_win_binary` is set to missing whenever `case_decisive = 0`",
+            "- `case_win_rate_fee` comes from SQL `shoulifeiyuangaobizhong`, transformed into the represented side's fee-based win-rate measure",
             "- Age is not available in the current lawyer list; the usable lawyer attributes are gender, party membership (`ccp`), education, and entry year",
             "- In document-level DID, `firm FE` will absorb time-invariant lawyer attributes. They are better used for heterogeneity or interacted designs than as standalone main-effect controls",
             "- `law_firm × year FE` should not be used in the main DID because it would absorb the treatment indicator, which varies only at the firm-year level",

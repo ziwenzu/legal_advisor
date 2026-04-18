@@ -359,12 +359,11 @@ build_table_tex <- function(results_list, file_path) {
     paste("City FE &", paste(c("No", "Yes", "No", "Yes", "No", "Yes"), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(c("No", "Yes", "No", "Yes", "No", "Yes"), collapse = " & "), "\\\\"),
     paste("Province-Year FE &", paste(rep("No", 6), collapse = " & "), "\\\\"),
-    paste("Clustered SE &", paste(rep("City", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
-    "\\item Note: Columns labeled CS report Callaway-Sant'Anna average treatment effects (ATTs). Columns labeled TWFE OLS report two-way fixed effects estimates with city and year fixed effects. All models use city-clustered standard errors, reported in parentheses. Controls include log population, log GDP, and log registered lawyers; government win rate models also include log court caseload. The reference period in the event-study figures is event time $-1$, which is omitted from the plots for both estimators to keep the comparison on a common scale. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
+    "\\item Note: Standard errors are clustered by city. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.",
     "\\end{tablenotes}",
     "\\end{threeparttable}",
     "\\end{table}"

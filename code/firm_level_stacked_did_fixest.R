@@ -6,14 +6,9 @@ suppressPackageStartupMessages({
 })
 
 root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-default_firm_input <- file.path(root_dir, "data", "output data", "firm_level.csv")
-internal_firm_input <- file.path(root_dir, "data", "output data", "firm_level_structural_repair_candidate.csv")
-if (file.exists(internal_firm_input)) {
-  default_firm_input <- internal_firm_input
-}
 input_file <- Sys.getenv(
   "FIRM_LEVEL_INPUT_FILE",
-  unset = default_firm_input
+  unset = file.path(root_dir, "data", "output data", "firm_level.csv")
 )
 figure_dir <- file.path(root_dir, "output", "figures")
 table_dir <- file.path(root_dir, "output", "tables")
@@ -73,10 +68,6 @@ client_mix_pre_expr <- function(enterprise_p, personal_p) {
 
 read_firm_panel <- function(path) {
   dt <- fread(path)
-
-  if ("imputed_balance_row" %in% names(dt)) {
-    dt <- dt[imputed_balance_row == 0]
-  }
 
   dt[, stack_firm_fe := sprintf("%s__%s", stack_id, firm_id)]
   dt[, stack_year_fe := sprintf("%s__%s", stack_id, year)]
@@ -197,6 +188,9 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
     ann_y <- 0.3
   }
   if (outcome_label == "Civil Win Rate") {
+    ann_y <- y_range[2] - 0.10 * y_span
+  }
+  if (outcome_label == "Civil Fee Win Rate") {
     ann_y <- y_range[2] - 0.10 * y_span
   }
   if (outcome_label == "Log Firm Size") {
@@ -370,21 +364,15 @@ build_main_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Weights &", paste(weight_row, collapse = " & "), "\\\\"),
-    paste("Sample &", paste(sample_row, collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Firm FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Year FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
-    paste("Clustered SE &", paste(rep("Stack and firm", 4), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item Note: All columns report stacked DID estimates from the firm-level panel.",
-      sprintf("The coefficient of interest is Winner $\\times$ Post, where treated firms are procurement winners and controls are %s.", control_note),
-      "All specifications absorb stack-by-firm fixed effects and stack-by-year fixed effects.",
-      "Columns 2 and 4 are restricted to firm-years with positive decisive cases and positive civil cases, respectively.",
-      "When `imputed_balance_row` is present, synthetic balancing rows are excluded from estimation.",
+      "\\item Note:",
+      sprintf("Treated firms are procurement winners and controls are %s.", control_note),
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -429,20 +417,53 @@ build_mechanism_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Weights &", paste(rep("No", 2), collapse = " & "), "\\\\"),
-    paste("Sample &", paste(rep("All firm-years", 2), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Year FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Clustered SE &", paste(rep("Stack and firm", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item Note: This table examines whether procurement winners expand by attracting more enterprise-side civil cases.",
-      "The coefficient of interest is Winner $\\times$ Post.",
-      "All specifications absorb stack-by-firm fixed effects and stack-by-year fixed effects.",
-      "When `imputed_balance_row` is present, synthetic balancing rows are excluded from estimation.",
+      "\\item Note:",
+      sprintf("Treated firms are procurement winners and controls are %s.", control_note),
+      "Standard errors are two-way clustered by stack and firm.",
+      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
+    ),
+    "\\end{tablenotes}",
+    "\\end{threeparttable}",
+    "\\end{table}"
+  )
+
+  writeLines(lines, con = file_path)
+}
+
+build_fee_winrate_appendix_table <- function(result, file_path) {
+  lines <- c(
+    "\\begin{table}[!htbp]",
+    "\\centering",
+    "\\caption{Firm-Level Fee-Based Win-Rate Robustness}",
+    "\\label{tab:firm_level_fee_winrate_appendix}",
+    "\\begin{threeparttable}",
+    "\\begin{tabular}{lc}",
+    "\\toprule",
+    " & Civil Fee Win Rate \\\\",
+    "\\midrule",
+    paste("Winner $\\times$ Post &", paste0(fmt_num(result$estimate), stars(result$p_value)), "\\\\"),
+    paste("&", paste0("(", fmt_num(result$se), ")"), "\\\\"),
+    "\\addlinespace",
+    paste("Observations &", fmt_int(result$n_obs), "\\\\"),
+    paste("$R^2$ &", fmt_num(result$r2), "\\\\"),
+    "Sample & Firm-years with fee-based decisive cases \\\\",
+    "Stack $\\times$ Firm FE & Yes \\\\",
+    "Stack $\\times$ Year FE & Yes \\\\",
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\begin{tablenotes}[flushleft]",
+    "\\footnotesize",
+    paste(
+      "\\item Note:",
+      sprintf("Treated firms are procurement winners and controls are %s.", control_note),
+      "This appendix table replaces the binary decisive-case win rate with `civil_win_rate_fee_mean`, the firm-year mean of case-level fee-based win rates.",
       "Standard errors are two-way clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -531,6 +552,42 @@ main <- function() {
   build_main_table(
     results_list = results_list,
     file_path = file.path(table_dir, build_output_name("firm_level_stacked_did_main_table", "tex"))
+  )
+
+  fee_spec <- list(
+    label = "Civil Fee Win Rate",
+    y_title = "Civil Fee Win Rate",
+    sample_filter = quote(civil_fee_decisive_case_n > 0)
+  )
+  fee_model <- estimate_main_model(
+    dt = dt,
+    outcome_name = "civil_win_rate_fee_mean",
+    sample_filter = fee_spec$sample_filter
+  )
+  fee_event_model <- estimate_event_model(
+    dt = dt,
+    outcome_name = "civil_win_rate_fee_mean",
+    sample_filter = fee_spec$sample_filter
+  )
+  fee_result <- extract_main_coef(fee_model)
+  fee_pretest <- extract_pretest(fee_event_model)
+
+  plot_event_study(
+    event_dt = extract_event_dt(fee_event_model),
+    outcome_label = fee_spec$label,
+    y_title = fee_spec$y_title,
+    main_effect = fee_result$estimate,
+    main_se = fee_result$se,
+    pre_p = fee_pretest$p_value,
+    file_path = file.path(
+      figure_dir,
+      build_output_name("firm_level_civil_fee_win_rate_event_study", "pdf")
+    )
+  )
+
+  build_fee_winrate_appendix_table(
+    result = fee_result,
+    file_path = file.path(table_dir, build_output_name("firm_level_fee_winrate_appendix_table", "tex"))
   )
 
   mechanism_results <- list()
