@@ -38,13 +38,13 @@ stars <- function(p_value) {
 
 fmt_num <- function(x, digits = 3) {
   x <- x[[1]]
-  if (is.na(x)) return("--")
+  if (is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
   x <- x[[1]]
-  if (is.na(x)) return("--")
+  if (is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -81,6 +81,7 @@ read_document_panel <- function(path) {
   practice_mean <- mean(dt$lawyer_practice_years, na.rm = TRUE)
   practice_sd <- sd(dt$lawyer_practice_years, na.rm = TRUE)
   dt[, lawyer_practice_years_std := (lawyer_practice_years - practice_mean) / practice_sd]
+  dt[, lawyer_practice_years_obs := as.integer(!is.na(lawyer_practice_years))]
   dt[is.na(lawyer_practice_years_std), lawyer_practice_years_std := 0]
 
   dt[, year_gender_fe := sprintf("%s__%s", year, lawyer_gender_group)]
@@ -199,6 +200,9 @@ estimate_single_attribute_model <- function(dt, outcome_name, attribute_term, sa
   work_dt <- copy(dt)
 
   keep_mask <- !is.na(work_dt[[outcome_name]]) & !is.na(work_dt[[attribute_term]])
+  if (is_continuous && attribute_term == "lawyer_practice_years_std") {
+    keep_mask <- keep_mask & (work_dt$lawyer_practice_years_obs == 1L)
+  }
   if (!is.null(sample_filter)) {
     keep_mask <- keep_mask & work_dt[, eval(sample_filter)]
   }
@@ -265,7 +269,7 @@ extract_pretest <- function(model, pre_periods = c(-5, -4, -3, -2)) {
 
   escaped_terms <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", present_terms)
   keep_pattern <- paste0("^(", paste(escaped_terms, collapse = "|"), ")$")
-  test_obj <- wald(model, keep = keep_pattern)
+  test_obj <- suppressMessages(wald(model, keep = keep_pattern, print = FALSE))
 
   list(
     stat = unname(test_obj$stat),
@@ -274,75 +278,8 @@ extract_pretest <- function(model, pre_periods = c(-5, -4, -3, -2)) {
   )
 }
 
-build_event_study_table <- function(event_dt, outcome_label, main_effect, main_se, main_p,
-                                    pre_p, file_path, file_label, caption,
-                                    cluster_label = "firm and stack") {
-  dt <- copy(event_dt)
-  setorder(dt, event_time)
-  dt[, se := (ci_hi - estimate) / 1.96]
-
-  body_lines <- vapply(seq_len(nrow(dt)), function(i) {
-    row <- dt[i]
-    if (isTRUE(row$is_ref)) {
-      paste(
-        sprintf("%d", as.integer(row$event_time)),
-        "& 0.000 & -- & -- & -- (reference) \\\\"
-      )
-    } else {
-      paste(
-        sprintf("%d", as.integer(row$event_time)),
-        "&", fmt_num(row$estimate),
-        "&", fmt_num(row$se),
-        "&", fmt_num(row$ci_lo),
-        "&", fmt_num(row$ci_hi),
-        "\\\\"
-      )
-    }
-  }, character(1))
-
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\centering",
-    sprintf("\\caption{%s}", caption),
-    sprintf("\\label{tab:%s}", file_label),
-    "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccc}",
-    "\\toprule",
-    "Event Time & Estimate & SE & 95\\% CI Low & 95\\% CI High \\\\",
-    "\\midrule",
-    body_lines,
-    "\\midrule",
-    paste0(
-      "Average post-period effect & ",
-      paste0(fmt_num(main_effect), stars(main_p)),
-      " & ", fmt_num(main_se),
-      " & -- & -- \\\\"
-    ),
-    paste0(
-      "Pre-period joint test ($p$) & ",
-      fmt_p(pre_p),
-      " & -- & -- & -- \\\\"
-    ),
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\begin{tablenotes}[flushleft]",
-    "\\footnotesize",
-    paste(
-      "\\item \\textit{Notes:}",
-      sprintf("Companion table for the %s event-study figure.", outcome_label),
-      "Each row reports the difference-in-differences coefficient at the indicated event time, with the 95\\% confidence interval obtained from two-way cluster-robust standard errors by",
-      paste0(cluster_label, "."),
-      "Event time $-1$ is the reference period.",
-      "The Average post-period effect line reproduces the static Winner $\\times$ Post coefficient.",
-      "The pre-period joint test is the Wald statistic that all event-time leads from $-5$ through $-2$ are jointly zero.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
-    "\\end{tablenotes}",
-    "\\end{threeparttable}",
-    "\\end{table}"
-  )
-
-  writeLines(lines, con = file_path)
+build_event_study_table <- function(...) {
+  invisible(NULL)
 }
 
 plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_se, pre_p, file_path) {
@@ -415,7 +352,7 @@ plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_
   text(
     x = ann_x,
     y = ann_y,
-    labels = sprintf("Main DID = %s\n(SE = %s)", fmt_num(main_effect), fmt_num(main_se)),
+    labels = sprintf("ATE = %s\n(SE = %s)", fmt_num(main_effect), fmt_num(main_se)),
     adj = c(0, 1),
     cex = 0.88
   )
@@ -449,14 +386,13 @@ build_main_table <- function(main_results, robust_results, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Document-Level DID Estimates}",
     "\\label{tab:document_level_did_main}",
     "\\begin{threeparttable}",
     "\\begin{tabular}{lcccccc}",
     "\\toprule",
-    " & \\multicolumn{3}{c}{Stack $\\times$ Year FE} & \\multicolumn{3}{c}{Court $\\times$ Year FE} \\\\",
-    "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}",
     " & (1) & (2) & (3) & (4) & (5) & (6) \\\\",
     "Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary \\\\",
     "\\midrule",
@@ -466,25 +402,21 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Firm FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(c("Yes", "Yes", "Yes", "No", "No", "No"), collapse = " & "), "\\\\"),
-    paste("Court $\\times$ Year FE &", paste(c("No", "No", "No", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year FE &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year FE &", paste(c("", "", "", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Court FE &", paste(c("Yes", "Yes", "Yes", "No", "No", "No"), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Lawyer Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Court FE &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
+    paste("Controls (case-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Controls (lawyer-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on Winner $\\times$ Post from document-level difference-in-differences regressions.",
-      "Reasoning Share is the share of the judgment text devoted to legal reasoning;",
-      "log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section;",
-      "Case Win Binary is an indicator for the represented side prevailing among decisive cases.",
-      "Columns 1--3 use stack $\\times$ year fixed effects; columns 4--6 replace them with court $\\times$ year fixed effects.",
-      "All specifications include firm, court, and cause $\\times$ side fixed effects, case controls for opposing-side representation and plaintiff/defendant entity status, and lawyer controls.",
-      "Two-way cluster-robust standard errors appear in parentheses, clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6.",
+      "\\item \\textit{Notes:} Document-level DID coefficients on Winner $\\times$ Post.",
+      "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, CCP membership, education, and standardized practice years.",
+      "Standard errors clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -509,6 +441,7 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Document-Level Fee-Based Win-Rate Robustness}",
     "\\label{tab:document_level_fee_winrate_appendix}",
@@ -524,22 +457,20 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(c("Yes", "No"), collapse = " & "), "\\\\"),
-    paste("Court $\\times$ Year FE &", paste(c("No", "Yes"), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year FE &", paste(c("Yes", ""), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year FE &", paste(c("", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Lawyer Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Controls (case-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Controls (lawyer-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on Winner $\\times$ Post from document-level difference-in-differences regressions.",
-      "The outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation.",
-      "Column 1 uses stack $\\times$ year fixed effects and column 2 replaces them with court $\\times$ year fixed effects.",
-      "All specifications include firm and cause $\\times$ side fixed effects, case controls for opposing-side representation and plaintiff/defendant entity status, and lawyer controls.",
-      "Two-way cluster-robust standard errors appear in parentheses, clustered by firm and stack in column 1 and by firm and court in column 2.",
+      "\\item \\textit{Notes:} Document-level DID coefficients on Winner $\\times$ Post.",
+      "Outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, CCP membership, education, and standardized practice years.",
+      "Standard errors clustered by firm and stack in column 1 and by firm and court in column 2.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -554,20 +485,21 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
   base_keys <- c("legal_reasoning_share", "log_legal_reasoning_length_chars", "case_win_binary")
   panel_order <- c("ccp", "gender", "seniority", "masterplus")
   panel_titles <- c(
-    ccp = "Panel A. CCP",
-    gender = "Panel B. Female",
-    seniority = "Panel C. Seniority",
-    masterplus = "Panel D. Master and Above"
+    ccp = "Panel A. Political heterogeneity (CCP membership)",
+    gender = "Panel B. Gender heterogeneity",
+    seniority = "Panel C. Experience heterogeneity (years of practice)",
+    masterplus = "Panel D. Educational heterogeneity (master's or above)"
   )
-  row_labels <- c(
+  diff_labels <- c(
     ccp = "Winner $\\times$ Post $\\times$ CCP",
     gender = "Winner $\\times$ Post $\\times$ Female",
     seniority = "Winner $\\times$ Post $\\times$ Seniority (std.)",
-    masterplus = "Winner $\\times$ Post $\\times$ Master and Above"
+    masterplus = "Winner $\\times$ Post $\\times$ Master+"
   )
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Document-Level Heterogeneity by Lawyer Attributes}",
     "\\label{tab:document_level_attribute_heterogeneity}",
@@ -580,34 +512,48 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
   )
 
   for (panel_key in panel_order) {
-    base_coef <- sapply(base_keys, function(key) {
-      res <- results_list[[panel_key]][[key]]
+    base_did_coef <- sapply(base_keys, function(key) {
+      res <- results_list[[panel_key]][[key]]$baseline
       paste0(fmt_num(res$estimate), stars(res$p_value))
     })
-    base_se <- sapply(base_keys, function(key) {
-      res <- results_list[[panel_key]][[key]]
+    base_did_se <- sapply(base_keys, function(key) {
+      res <- results_list[[panel_key]][[key]]$baseline
       paste0("(", fmt_num(res$se), ")")
     })
-    base_obs <- sapply(base_keys, function(key) fmt_int(results_list[[panel_key]][[key]]$n_obs))
-    base_r2 <- sapply(base_keys, function(key) fmt_num(results_list[[panel_key]][[key]]$r2))
+    diff_coef <- sapply(base_keys, function(key) {
+      res <- results_list[[panel_key]][[key]]$diff
+      paste0(fmt_num(res$estimate), stars(res$p_value))
+    })
+    diff_se <- sapply(base_keys, function(key) {
+      res <- results_list[[panel_key]][[key]]$diff
+      paste0("(", fmt_num(res$se), ")")
+    })
+    obs_cells <- sapply(base_keys, function(key) fmt_int(results_list[[panel_key]][[key]]$baseline$n_obs))
+    r2_cells <- sapply(base_keys, function(key) fmt_num(results_list[[panel_key]][[key]]$baseline$r2))
 
-    fee_res <- fee_results_list[[panel_key]]
-    fee_coef <- paste0(fmt_num(fee_res$estimate), stars(fee_res$p_value))
-    fee_se <- paste0("(", fmt_num(fee_res$se), ")")
-    fee_obs <- fmt_int(fee_res$n_obs)
-    fee_r2 <- fmt_num(fee_res$r2)
+    fee_pack <- fee_results_list[[panel_key]]
+    fee_did_coef <- paste0(fmt_num(fee_pack$baseline$estimate), stars(fee_pack$baseline$p_value))
+    fee_did_se <- paste0("(", fmt_num(fee_pack$baseline$se), ")")
+    fee_diff_coef <- paste0(fmt_num(fee_pack$diff$estimate), stars(fee_pack$diff$p_value))
+    fee_diff_se <- paste0("(", fmt_num(fee_pack$diff$se), ")")
+    fee_obs <- fmt_int(fee_pack$baseline$n_obs)
+    fee_r2 <- fmt_num(fee_pack$baseline$r2)
 
-    coef_row <- c(base_coef, fee_coef)
-    se_row <- c(base_se, fee_se)
-    obs_row <- c(base_obs, fee_obs)
-    r2_row <- c(base_r2, fee_r2)
+    did_row <- c(base_did_coef, fee_did_coef)
+    did_se_row <- c(base_did_se, fee_did_se)
+    diff_row <- c(diff_coef, fee_diff_coef)
+    diff_se_row <- c(diff_se, fee_diff_se)
+    obs_row <- c(obs_cells, fee_obs)
+    r2_row <- c(r2_cells, fee_r2)
 
     lines <- c(
       lines,
       "\\addlinespace",
       paste0("\\multicolumn{5}{l}{\\textit{", panel_titles[[panel_key]], "}} \\\\"),
-      paste(row_labels[[panel_key]], "&", paste(coef_row, collapse = " & "), "\\\\"),
-      paste("&", paste(se_row, collapse = " & "), "\\\\"),
+      paste("Winner $\\times$ Post &", paste(did_row, collapse = " & "), "\\\\"),
+      paste("&", paste(did_se_row, collapse = " & "), "\\\\"),
+      paste(diff_labels[[panel_key]], "&", paste(diff_row, collapse = " & "), "\\\\"),
+      paste("&", paste(diff_se_row, collapse = " & "), "\\\\"),
       paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
       paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\")
     )
@@ -620,15 +566,10 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on the triple interaction Winner $\\times$ Post $\\times$ Attribute, where Attribute is the lawyer characteristic listed at the top of each panel.",
-      "CCP equals 1 if the matched lawyer is a Communist Party member.",
-      "Female equals 1 if the matched lawyer is a woman.",
-      "Seniority is standardized lawyer practice years.",
-      "Master and Above equals 1 if the matched lawyer has a master's or PhD degree.",
-      "Outcomes are the share of legal reasoning (column 1), the log of one plus reasoning length in characters (column 2), an indicator for a binary win in decisive cases (column 3), and the fee-based win rate in decisive cases with observed fee allocation (column 4).",
-      "All specifications include firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects, plus case controls for opposing-side representation and plaintiff/defendant entity status.",
-      "Two-way cluster-robust standard errors by firm and stack appear in parentheses.",
+      "\\item \\textit{Notes:} Each panel reports two coefficients per outcome: the level Winner $\\times$ Post effect and the differential Winner $\\times$ Post $\\times$ Attribute.",
+      "Outcomes: legal-reasoning share (col.\\ 1), log reasoning length plus one (col.\\ 2), binary win in decisive cases (col.\\ 3), fee-based win rate in decisive cases with observed fee (col.\\ 4).",
+      "All regressions include firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects; year-by-attribute fixed effects that absorb the level effect of each lawyer attribute; and case-level controls for opposing-side representation and plaintiff/defendant entity status.",
+      "Standard errors clustered by firm and stack.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -771,6 +712,13 @@ main <- function() {
     masterplus = list(term = "lawyer_high_edu", label = "did_treatment:lawyer_high_edu", is_continuous = FALSE)
   )
 
+  pack_attribute_result <- function(model, diff_term) {
+    list(
+      baseline = extract_main_coef(model, "did_treatment"),
+      diff = extract_main_coef(model, diff_term)
+    )
+  }
+
   attribute_results <- list()
   for (attr_name in names(attribute_specs)) {
     attr_spec <- attribute_specs[[attr_name]]
@@ -785,7 +733,7 @@ main <- function() {
         sample_filter = sample_filter,
         is_continuous = attr_spec$is_continuous
       )
-      attribute_results[[attr_name]][[outcome_name]] <- extract_main_coef(model, attr_spec$label)
+      attribute_results[[attr_name]][[outcome_name]] <- pack_attribute_result(model, attr_spec$label)
     }
   }
 
@@ -799,7 +747,7 @@ main <- function() {
       sample_filter = fee_winrate_spec$sample_filter,
       is_continuous = attr_spec$is_continuous
     )
-    fee_attribute_results[[attr_name]] <- extract_main_coef(model, attr_spec$label)
+    fee_attribute_results[[attr_name]] <- pack_attribute_result(model, attr_spec$label)
   }
 
   build_attribute_table(

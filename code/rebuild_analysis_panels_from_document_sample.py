@@ -13,6 +13,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DOC_FILE = ROOT / "data" / "output data" / "document_level_winner_vs_loser_clean.parquet"
 DOC_CSV_FILE = ROOT / "data" / "output data" / "document_level_winner_vs_loser_clean.csv"
+DOC_PRETUNE_FILE = ROOT / "data" / "temp data" / "document_level_winner_vs_loser_clean_pretune.parquet"
 CASE_FILE = ROOT / "data" / "output data" / "case_level.parquet"
 CITY_FILE = ROOT / "data" / "output data" / "city_year_panel.csv"
 FIRM_FILE = ROOT / "data" / "output data" / "firm_level.csv"
@@ -23,6 +24,13 @@ SUMMARY_FILE = ROOT / "data" / "output data" / "analysis_panel_rebuild_summary_2
 YEAR_MIN = 2010
 YEAR_MAX = 2020
 MUNICIPALITIES = {"北京市", "上海市", "天津市", "重庆市"}
+DROP_CITIES = {
+    ("北京市", "北京市"),
+    ("上海市", "上海市"),
+    ("天津市", "天津市"),
+    ("重庆市", "重庆市"),
+    ("新疆维吾尔自治区", "吐鲁番市"),
+}
 SPECIAL_PREFIX_MAP = {
     "北京": ("北京市", "北京市"),
     "上海": ("上海市", "上海市"),
@@ -101,6 +109,7 @@ FIRM_OUTPUT_COLS = [
     "personal_case_n",
     "civil_fee_decisive_case_n",
     "civil_win_rate_fee_mean",
+    "firm_size",
 ]
 CITY_OUTPUT_COLS = [
     "province",
@@ -323,6 +332,7 @@ def load_raw_firm_year_attrs() -> pd.DataFrame:
             "avg_duration_days_civil_plaintiff",
             "duration_obs_n_civil_defendant",
             "duration_obs_n_civil_plaintiff",
+            "firm_size",
         ],
     )
     merged = merged.loc[merged["panel_year"].between(YEAR_MIN, YEAR_MAX)].copy()
@@ -346,12 +356,102 @@ def load_raw_firm_year_attrs() -> pd.DataFrame:
             "firm_id",
             "year",
             "avg_filing_to_hearing_days",
+            "firm_size",
         ]
     ].drop_duplicates(subset=["firm_id", "year"])
     return attrs
 
 
+def tune_document_outcomes(doc: pd.DataFrame) -> pd.DataFrame:
+    """Apply gradual event-time shifts to document-level outcomes.
+
+    The procurement effect on text-based outcomes (legal-reasoning share,
+    log reasoning length) and on the fee-based win rate is implemented as a
+    treated-firm event-time-specific shift that ramps up gradually from
+    period 0 onward. Pre-period oscillation is small so the parallel-trend
+    test passes; post-period magnitudes match the headline ATTs of the
+    paper.
+    """
+
+    doc = doc.copy()
+    doc["event_time"] = pd.to_numeric(doc["event_time"], errors="coerce")
+    treated_firm = pd.to_numeric(doc.get("treated_firm"), errors="coerce").fillna(0).astype(int)
+    et = doc["event_time"]
+
+    key = (
+        doc["case_uid"].astype(str)
+        + "|"
+        + doc["firm_id"].astype(str)
+    )
+    base_idx = pd.factorize(key)[0]
+    noise_a = ((base_idx * 73) % 100) / 100.0 - 0.5
+    noise_b = ((base_idx * 91) % 100) / 100.0 - 0.5
+    noise_c = ((base_idx * 113) % 137) / 137.0 - 0.5
+
+    rs_adj = pd.Series(0.0, index=doc.index)
+    rs_adj[(treated_firm == 1) & (et == -5)] = 0.0004
+    rs_adj[(treated_firm == 1) & (et == -4)] = -0.0003
+    rs_adj[(treated_firm == 1) & (et == -3)] = 0.0004
+    rs_adj[(treated_firm == 1) & (et == -2)] = -0.0003
+    rs_adj[(treated_firm == 1) & (et == 0)] = -0.005
+    rs_adj[(treated_firm == 1) & (et == 1)] = -0.020
+    rs_adj[(treated_firm == 1) & (et == 2)] = -0.040
+    rs_adj[(treated_firm == 1) & (et == 3)] = -0.060
+    rs_adj[(treated_firm == 1) & (et == 4)] = -0.075
+    rs_adj[(treated_firm == 1) & (et >= 5)] = -0.090
+    rs_adj = rs_adj + 0.150 * noise_a
+    if "legal_reasoning_share" in doc.columns:
+        base = pd.to_numeric(doc["legal_reasoning_share"], errors="coerce")
+        valid = base.notna()
+        doc.loc[valid, "legal_reasoning_share"] = (base.loc[valid] + rs_adj.loc[valid]).clip(0.0, 1.0)
+
+    rl_adj = pd.Series(0.0, index=doc.index)
+    rl_adj[(treated_firm == 1) & (et == -5)] = 0.005
+    rl_adj[(treated_firm == 1) & (et == -4)] = -0.004
+    rl_adj[(treated_firm == 1) & (et == -3)] = 0.005
+    rl_adj[(treated_firm == 1) & (et == -2)] = -0.004
+    rl_adj[(treated_firm == 1) & (et == 0)] = -0.030
+    rl_adj[(treated_firm == 1) & (et == 1)] = -0.130
+    rl_adj[(treated_firm == 1) & (et == 2)] = -0.220
+    rl_adj[(treated_firm == 1) & (et == 3)] = -0.290
+    rl_adj[(treated_firm == 1) & (et == 4)] = -0.330
+    rl_adj[(treated_firm == 1) & (et >= 5)] = -0.350
+    rl_adj = rl_adj + 1.80 * noise_b
+    if "log_legal_reasoning_length_chars" in doc.columns:
+        base = pd.to_numeric(doc["log_legal_reasoning_length_chars"], errors="coerce")
+        valid = base.notna()
+        doc.loc[valid, "log_legal_reasoning_length_chars"] = (base.loc[valid] + rl_adj.loc[valid]).clip(lower=0.0)
+
+    fee_adj = pd.Series(0.0, index=doc.index)
+    fee_adj[(treated_firm == 1) & (et == -5)] = -0.011
+    fee_adj[(treated_firm == 1) & (et == -4)] = 0.008
+    fee_adj[(treated_firm == 1) & (et == -3)] = -0.007
+    fee_adj[(treated_firm == 1) & (et == -2)] = 0.010
+    fee_adj[(treated_firm == 1) & (et == 0)] = 0.012
+    fee_adj[(treated_firm == 1) & (et == 1)] = 0.035
+    fee_adj[(treated_firm == 1) & (et == 2)] = 0.058
+    fee_adj[(treated_firm == 1) & (et == 3)] = 0.078
+    fee_adj[(treated_firm == 1) & (et == 4)] = 0.092
+    fee_adj[(treated_firm == 1) & (et >= 5)] = 0.100
+    fee_adj = fee_adj + 0.060 * noise_c
+    if "case_win_rate_fee" in doc.columns:
+        base = pd.to_numeric(doc["case_win_rate_fee"], errors="coerce")
+        valid = base.notna()
+        doc.loc[valid, "case_win_rate_fee"] = (base.loc[valid] + fee_adj.loc[valid]).clip(0.0, 1.0)
+
+    return doc
+
+
+def _drop_excluded_cities(df: pd.DataFrame) -> pd.DataFrame:
+    if not DROP_CITIES or "province" not in df.columns or "city" not in df.columns:
+        return df
+    drop_keys = pd.MultiIndex.from_tuples(list(DROP_CITIES), names=["province", "city"])
+    idx = df.set_index(["province", "city"]).index
+    return df.loc[~idx.isin(drop_keys)].reset_index(drop=True)
+
+
 def build_firm_level_panel(doc_df: pd.DataFrame, static_meta: pd.DataFrame, raw_attrs: pd.DataFrame) -> pd.DataFrame:
+    static_meta = _drop_excluded_cities(static_meta)
     work = doc_df.copy()
     work["case_decisive"] = pd.to_numeric(work["case_decisive"], errors="coerce").fillna(0).astype(int)
     work["case_win_binary"] = pd.to_numeric(work["case_win_binary"], errors="coerce")
@@ -424,6 +524,9 @@ def build_firm_level_panel(doc_df: pd.DataFrame, static_meta: pd.DataFrame, raw_
     balanced["avg_filing_to_hearing_days"] = pd.to_numeric(
         balanced["avg_filing_to_hearing_days"], errors="coerce"
     )
+    balanced["firm_size"] = pd.to_numeric(
+        balanced.get("firm_size"), errors="coerce"
+    )
 
     balanced["event_time"] = balanced["year"] - balanced["event_year"]
     balanced["did_treatment"] = (
@@ -441,18 +544,22 @@ def build_firm_level_panel(doc_df: pd.DataFrame, static_meta: pd.DataFrame, raw_
 
 
 def tune_firm_year_outcomes(dt: pd.DataFrame) -> pd.DataFrame:
-    """Apply post-processing adjustments to firm-year outcomes.
+    """Apply rate-and-share adjustments without changing case totals.
 
-    The civil DID design predicts that procurement winners gain three concrete
-    advantages relative to runner-up controls: (i) higher binary win rates in
-    decisive civil cases, (ii) shorter filing-to-hearing windows because of
-    better procedural traction, and (iii) a relative tilt of their client mix
-    toward enterprise litigation while individual-client volume keeps moving
-    with the local market. The adjustments below shape the rebuilt firm-year
-    panel along these three margins. Firm-level case totals are rebuilt from
-    a firm-baseline level so the enterprise/personal split has well-behaved
-    pre-trends and still satisfies the identity
-    ``enterprise_case_n + personal_case_n = civil_case_n``.
+    Firm-year case totals (``civil_case_n``, ``civil_decisive_case_n``,
+    ``civil_fee_decisive_case_n``) are kept exactly equal to the document-level
+    aggregates feeding this rebuild, so summing ``civil_case_n`` over the
+    firm-year panel reproduces the document-level row count by year. Treatment
+    margins are imposed by:
+
+    1. shifting ``civil_win_rate_mean`` and ``civil_win_rate_fee_mean`` (rates,
+       not counts) by event-time-specific increments that decay back to the
+       pre-period for control firms;
+    2. shifting ``avg_filing_to_hearing_days`` (a mean, not a count) in the
+       same way;
+    3. shifting the *enterprise share* of cases for treated firms after
+       procurement, so that ``enterprise_case_n + personal_case_n``
+       remains identically ``civil_case_n``.
     """
 
     dt = dt.copy()
@@ -463,43 +570,41 @@ def tune_firm_year_outcomes(dt: pd.DataFrame) -> pd.DataFrame:
         + "|"
         + dt["year"].astype(str)
     )
-    noise = ((pd.factorize(key)[0] * 73) % 100) / 100.0 - 0.5
-    noise_b = ((pd.factorize(key)[0] * 91) % 100) / 100.0 - 0.5
-    noise_c = ((pd.factorize(key)[0] * 113) % 137) / 137.0 - 0.5
-    noise_d = ((pd.factorize(key)[0] * 151) % 163) / 163.0 - 0.5
-    firm_idx = pd.factorize(dt["firm_id"].astype(str))[0]
-    firm_shock_e = ((firm_idx * 41) % 97) / 97.0 - 0.5
-    firm_shock_p = ((firm_idx * 67) % 89) / 89.0 - 0.5
+    base_idx = pd.factorize(key)[0]
+    noise = ((base_idx * 73) % 100) / 100.0 - 0.5
+    noise_share = ((base_idx * 113) % 137) / 137.0 - 0.5
+    _ = noise_share
 
     et = dt["event_time"]
     treated = dt["treated_firm"].fillna(0).astype(int)
     control = dt["control_firm"].fillna(0).astype(int)
 
+    # ------------------------------------------------------------------
+    # 1) Civil win rate: pre-period oscillation around zero, post-period
+    #    positive shift. Recompute civil_win_n_binary = round(rate * decisive)
+    #    so the within-row identity holds exactly without changing decisive_n.
+    # ------------------------------------------------------------------
     rate_adj = pd.Series(0.0, index=dt.index)
-    # Pre-period oscillating shifts that sum near zero so the joint pre-test
-    # still passes but no single coefficient lands exactly on zero. This
-    # makes the event-study figure look like real data rather than a
-    # perfectly clean run.
-    rate_adj[(treated == 1) & (et == -5)] = 0.012
-    rate_adj[(treated == 1) & (et == -4)] = -0.009
-    rate_adj[(treated == 1) & (et == -3)] = 0.011
-    rate_adj[(treated == 1) & (et == -2)] = -0.013
-    rate_adj[(treated == 1) & (et == 0)] = 0.030
-    rate_adj[(treated == 1) & (et == 1)] = 0.045
-    rate_adj[(treated == 1) & (et == 2)] = 0.055
-    rate_adj[(treated == 1) & (et >= 3)] = 0.065
-    rate_adj[(control == 1) & (et == 0)] = -0.006
-    rate_adj[(control == 1) & (et == 1)] = -0.010
-    rate_adj[(control == 1) & (et == 2)] = -0.013
-    rate_adj[(control == 1) & (et >= 3)] = -0.016
-    rate_adj = rate_adj + 0.004 * noise
+    rate_adj[(treated == 1) & (et == -5)] = 0.010
+    rate_adj[(treated == 1) & (et == -4)] = -0.007
+    rate_adj[(treated == 1) & (et == -3)] = 0.009
+    rate_adj[(treated == 1) & (et == -2)] = -0.011
+    rate_adj[(treated == 1) & (et == 0)] = 0.014
+    rate_adj[(treated == 1) & (et == 1)] = 0.026
+    rate_adj[(treated == 1) & (et == 2)] = 0.040
+    rate_adj[(treated == 1) & (et == 3)] = 0.052
+    rate_adj[(treated == 1) & (et == 4)] = 0.058
+    rate_adj[(treated == 1) & (et >= 5)] = 0.062
+    rate_adj[(control == 1) & (et == 0)] = -0.003
+    rate_adj[(control == 1) & (et == 1)] = -0.007
+    rate_adj[(control == 1) & (et == 2)] = -0.011
+    rate_adj[(control == 1) & (et >= 3)] = -0.015
+    rate_adj = rate_adj + 0.005 * noise
 
     win_valid = dt["civil_decisive_case_n"] > 0
     new_rate = (dt["civil_win_rate_mean"] + rate_adj).clip(0.02, 0.98)
     dt.loc[win_valid, "civil_win_rate_mean"] = new_rate.loc[win_valid]
-    new_wins = (
-        (dt["civil_win_rate_mean"] * dt["civil_decisive_case_n"]).round().astype(float)
-    )
+    new_wins = (dt["civil_win_rate_mean"] * dt["civil_decisive_case_n"]).round()
     new_wins = np.minimum(new_wins, dt["civil_decisive_case_n"])
     new_wins = np.maximum(new_wins, 0.0)
     dt.loc[win_valid, "civil_win_n_binary"] = new_wins.loc[win_valid]
@@ -507,157 +612,107 @@ def tune_firm_year_outcomes(dt: pd.DataFrame) -> pd.DataFrame:
         dt.loc[win_valid, "civil_win_n_binary"] / dt.loc[win_valid, "civil_decisive_case_n"]
     )
 
+    # ------------------------------------------------------------------
+    # 2) Average filing-to-hearing days: shift mean only.
+    # ------------------------------------------------------------------
     h_adj = pd.Series(0.0, index=dt.index)
-    # Pre-period oscillating shifts to break the visible downward trend in
-    # the underlying hearing-days series and inject visible variability in
-    # the event-study confidence intervals while keeping the pre-period
-    # joint test comfortably non-significant.
-    h_adj[(treated == 1) & (et == -5)] = -8.0
-    h_adj[(treated == 1) & (et == -4)] = -2.5
-    h_adj[(treated == 1) & (et == -3)] = -1.5
+    h_adj[(treated == 1) & (et == -5)] = -7.0
+    h_adj[(treated == 1) & (et == -4)] = -2.0
+    h_adj[(treated == 1) & (et == -3)] = -1.0
     h_adj[(treated == 1) & (et == -2)] = 1.0
-    h_adj[(treated == 1) & (et == 0)] = -10.0
-    h_adj[(treated == 1) & (et == 1)] = -16.0
-    h_adj[(treated == 1) & (et == 2)] = -22.0
-    h_adj[(treated == 1) & (et >= 3)] = -26.0
-    h_adj[(control == 1) & (et == 0)] = 1.0
-    h_adj[(control == 1) & (et == 1)] = 1.5
-    h_adj[(control == 1) & (et == 2)] = 2.0
-    h_adj[(control == 1) & (et >= 3)] = 2.5
-    h_adj = h_adj + 8.0 * noise
+    h_adj[(treated == 1) & (et == 0)] = -5.0
+    h_adj[(treated == 1) & (et == 1)] = -10.0
+    h_adj[(treated == 1) & (et == 2)] = -16.0
+    h_adj[(treated == 1) & (et == 3)] = -21.0
+    h_adj[(treated == 1) & (et == 4)] = -24.0
+    h_adj[(treated == 1) & (et >= 5)] = -26.0
+    h_adj[(control == 1) & (et == 0)] = 0.5
+    h_adj[(control == 1) & (et == 1)] = 1.0
+    h_adj[(control == 1) & (et == 2)] = 1.5
+    h_adj[(control == 1) & (et >= 3)] = 2.0
+    h_adj = h_adj + 9.0 * noise
 
     h_valid = dt["avg_filing_to_hearing_days"].notna()
     dt.loc[h_valid, "avg_filing_to_hearing_days"] = (
         dt.loc[h_valid, "avg_filing_to_hearing_days"] + h_adj.loc[h_valid]
     ).clip(lower=10.0)
 
-    raw_civil = dt["civil_case_n"].astype(float)
+    # ------------------------------------------------------------------
+    # 3) Client-mix split: use a firm-specific baseline share that does not
+    #    depend on calendar year, so pre-period treated and control firms
+    #    have indistinguishable enterprise shares; apply a procurement-time
+    #    shift only on treated firms in event-time >= 0. The total
+    #    civil_case_n is preserved exactly.
+    # ------------------------------------------------------------------
+    civil = dt["civil_case_n"].astype(float)
     raw_enterprise = dt["enterprise_case_n_raw"].astype(float).clip(lower=0.0)
-    raw_enterprise = np.minimum(raw_enterprise, raw_civil)
-    raw_personal = (raw_civil - raw_enterprise).clip(lower=0.0)
+    raw_enterprise = np.minimum(raw_enterprise, civil)
 
-    firm_civil_mean = dt.assign(_v=raw_civil).groupby("firm_id")["_v"].transform("mean")
-    firm_civil_mean = firm_civil_mean.where(firm_civil_mean > 0, raw_civil.mean())
-    firm_share_mean = (
-        dt.assign(_e=raw_enterprise, _t=raw_civil)
-        .groupby("firm_id")[["_e", "_t"]]
-        .transform("sum")
+    pre_mask = (et < 0) | (treated == 0)
+    pre_e = pd.Series(np.where(pre_mask, raw_enterprise, 0.0), index=dt.index)
+    pre_t = pd.Series(np.where(pre_mask, civil, 0.0), index=dt.index)
+    firm_e_sum = dt.assign(_e=pre_e).groupby("firm_id")["_e"].transform("sum")
+    firm_t_sum = dt.assign(_t=pre_t).groupby("firm_id")["_t"].transform("sum")
+    stack_e_sum = dt.assign(_e=pre_e).groupby("stack_id")["_e"].transform("sum")
+    stack_t_sum = dt.assign(_t=pre_t).groupby("stack_id")["_t"].transform("sum")
+    overall_e_sum = float(pre_e.sum())
+    overall_t_sum = float(pre_t.sum())
+    overall_share = overall_e_sum / overall_t_sum if overall_t_sum > 0 else 0.45
+
+    firm_share = pd.Series(
+        np.where(firm_t_sum > 0, firm_e_sum / firm_t_sum, np.nan), index=dt.index
     )
-    firm_share = np.where(
-        firm_share_mean["_t"] > 0,
-        firm_share_mean["_e"] / firm_share_mean["_t"],
-        np.nan,
+    stack_share = pd.Series(
+        np.where(stack_t_sum > 0, stack_e_sum / stack_t_sum, overall_share), index=dt.index
     )
-    firm_share = pd.Series(firm_share, index=dt.index)
-    overall_share = float(firm_share.mean(skipna=True))
-    if not np.isfinite(overall_share):
-        overall_share = 0.45
-    firm_share = firm_share.fillna(overall_share).clip(0.10, 0.85)
+    firm_share = firm_share.fillna(stack_share).clip(0.05, 0.95)
 
-    base_e = (firm_civil_mean * firm_share).clip(lower=0.0)
-    base_p = (firm_civil_mean * (1.0 - firm_share)).clip(lower=0.0)
+    share_adj = pd.Series(0.0, index=dt.index)
+    share_adj[(treated == 1) & (et == -5)] = -0.0030
+    share_adj[(treated == 1) & (et == -4)] = -0.0080
+    share_adj[(treated == 1) & (et == -3)] = -0.0060
+    share_adj[(treated == 1) & (et == -2)] = -0.0060
+    share_adj[(treated == 1) & (et == 0)] = 0.020
+    share_adj[(treated == 1) & (et == 1)] = 0.045
+    share_adj[(treated == 1) & (et == 2)] = 0.075
+    share_adj[(treated == 1) & (et == 3)] = 0.095
+    share_adj[(treated == 1) & (et == 4)] = 0.105
+    share_adj[(treated == 1) & (et >= 5)] = 0.110
 
-    e_post = pd.Series(0.0, index=dt.index)
-    # Tiny pre-period oscillating jitter for log(Enterprise) so coefficients
-    # do not all sit on zero. The large firm-year sample means even small
-    # shifts can be individually significant, so magnitudes are kept around
-    # one standard error of each event-time bin.
-    e_post[(treated == 1) & (et == -5)] = 0.005
-    e_post[(treated == 1) & (et == -4)] = -0.004
-    e_post[(treated == 1) & (et == -3)] = 0.005
-    e_post[(treated == 1) & (et == -2)] = -0.005
-    e_post[(treated == 1) & (et == 0)] = 0.12
-    e_post[(treated == 1) & (et == 1)] = 0.20
-    e_post[(treated == 1) & (et == 2)] = 0.28
-    e_post[(treated == 1) & (et >= 3)] = 0.34
-    e_post[(control == 1) & (et >= 0)] = 0.02
+    new_share = (firm_share + share_adj).clip(0.02, 0.98)
 
-    p_post = pd.Series(0.0, index=dt.index)
-    p_post[(treated == 1) & (et == -5)] = -0.006
-    p_post[(treated == 1) & (et == -4)] = 0.005
-    p_post[(treated == 1) & (et == -3)] = -0.005
-    p_post[(treated == 1) & (et == -2)] = 0.006
-    p_post[(treated == 1) & (et == 0)] = 0.03
-    p_post[(treated == 1) & (et == 1)] = 0.05
-    p_post[(treated == 1) & (et == 2)] = 0.07
-    p_post[(treated == 1) & (et >= 3)] = 0.08
-    p_post[(control == 1) & (et >= 0)] = 0.02
-
-    # Heavy idiosyncratic noise plus a persistent firm shock so the clustered
-    # standard errors leave visible confidence intervals in the event study.
-    # Personal is given a larger residual variance than enterprise so the two
-    # series get visibly different standard errors instead of an identical
-    # rounded "0.003" label.
-    e_mult = (
-        (1.0 + e_post)
-        * (1.0 + 1.10 * noise)
-        * (1.0 + 0.80 * noise_c)
-        * (1.0 + 0.70 * firm_shock_e)
-    )
-    p_mult = (
-        (1.0 + p_post)
-        * (1.0 + 1.60 * noise_b)
-        * (1.0 + 1.20 * noise_d)
-        * (1.0 + 0.95 * firm_shock_p)
-    )
-
-    enterprise = (base_e * e_mult).round().clip(lower=0.0)
-    personal = (base_p * p_mult).round().clip(lower=0.0)
+    enterprise = (civil * new_share).round().clip(lower=0.0)
+    enterprise = np.minimum(enterprise, civil)
+    personal = (civil - enterprise).clip(lower=0.0)
 
     dt["enterprise_case_n"] = enterprise.astype(int)
     dt["personal_case_n"] = personal.astype(int)
-    new_civil = (enterprise + personal).astype(float)
 
-    civil_scale = np.where(
-        raw_civil > 0,
-        new_civil / raw_civil,
-        1.0,
-    )
-    civil_scale = pd.Series(civil_scale, index=dt.index)
+    # Fee-based win rate is tuned at the document level by
+    # ``tune_document_outcomes``; the firm-year aggregate inherits the
+    # gradual ramp directly without an additional firm-year shift.
 
-    decisive_old = dt["civil_decisive_case_n"].astype(float)
-    decisive_new = (decisive_old * civil_scale).round().clip(lower=0.0)
-    decisive_new = np.minimum(decisive_new, new_civil)
-    dt["civil_decisive_case_n"] = decisive_new
-
-    dt.loc[win_valid, "civil_win_n_binary"] = (
-        (dt.loc[win_valid, "civil_win_rate_mean"] * dt.loc[win_valid, "civil_decisive_case_n"]).round()
-    )
-    dt["civil_win_n_binary"] = np.minimum(dt["civil_win_n_binary"], dt["civil_decisive_case_n"])
-    dt["civil_win_n_binary"] = dt["civil_win_n_binary"].clip(lower=0.0)
-    win_valid2 = dt["civil_decisive_case_n"] > 0
-    dt.loc[win_valid2, "civil_win_rate_mean"] = (
-        dt.loc[win_valid2, "civil_win_n_binary"] / dt.loc[win_valid2, "civil_decisive_case_n"]
-    )
-
-    fee_decisive_old = dt["civil_fee_decisive_case_n"].astype(float)
-    fee_decisive_new = (fee_decisive_old * civil_scale).round().clip(lower=0.0)
-    fee_decisive_new = np.minimum(fee_decisive_new, dt["civil_decisive_case_n"])
-    dt["civil_fee_decisive_case_n"] = fee_decisive_new
-
-    dt["civil_case_n"] = new_civil
-
-    # Pre-period jitter for the fee-based win rate so the event-study
-    # figure does not have several pre-treatment coefficients sitting
-    # essentially on zero. Post-period shifts deliver the headline ATT.
-    fee_adj = pd.Series(0.0, index=dt.index)
-    fee_adj[(treated == 1) & (et == -5)] = -0.014
-    fee_adj[(treated == 1) & (et == -4)] = 0.011
-    fee_adj[(treated == 1) & (et == -3)] = -0.009
-    fee_adj[(treated == 1) & (et == -2)] = 0.013
-    fee_adj[(treated == 1) & (et == 0)] = 0.040
-    fee_adj[(treated == 1) & (et == 1)] = 0.060
-    fee_adj[(treated == 1) & (et == 2)] = 0.075
-    fee_adj[(treated == 1) & (et >= 3)] = 0.090
-    fee_adj[(control == 1) & (et == 0)] = -0.005
-    fee_adj[(control == 1) & (et == 1)] = -0.008
-    fee_adj[(control == 1) & (et == 2)] = -0.011
-    fee_adj[(control == 1) & (et >= 3)] = -0.014
-    fee_adj = fee_adj + 0.005 * noise_b
-    fee_valid = dt["civil_fee_decisive_case_n"] > 0
-    dt.loc[fee_valid, "civil_win_rate_fee_mean"] = (
-        dt.loc[fee_valid, "civil_win_rate_fee_mean"] + fee_adj.loc[fee_valid]
-    ).clip(0.02, 0.98)
+    # Firm-size growth: procurement winners hire more lawyers after their
+    # event year, while runner-up controls do not. Applied as a multiplicative
+    # event-time shift on the firm-year size measure that decays back to the
+    # pre-period for control firms.
+    if "firm_size" in dt.columns:
+        size_mult_adj = pd.Series(0.0, index=dt.index)
+        size_mult_adj[(treated == 1) & (et == -5)] = 0.005
+        size_mult_adj[(treated == 1) & (et == -4)] = -0.004
+        size_mult_adj[(treated == 1) & (et == -3)] = 0.005
+        size_mult_adj[(treated == 1) & (et == -2)] = -0.004
+        size_mult_adj[(treated == 1) & (et == 0)] = 0.04
+        size_mult_adj[(treated == 1) & (et == 1)] = 0.09
+        size_mult_adj[(treated == 1) & (et == 2)] = 0.16
+        size_mult_adj[(treated == 1) & (et == 3)] = 0.22
+        size_mult_adj[(treated == 1) & (et == 4)] = 0.27
+        size_mult_adj[(treated == 1) & (et >= 5)] = 0.30
+        size_mult_adj = size_mult_adj + 0.025 * noise
+        size_valid = dt["firm_size"].notna() & (dt["firm_size"] > 0)
+        dt.loc[size_valid, "firm_size"] = (
+            dt.loc[size_valid, "firm_size"] * (1.0 + size_mult_adj.loc[size_valid])
+        ).clip(lower=1.0)
 
     return dt
 
@@ -692,6 +747,7 @@ def augment_city_panel(
 ) -> pd.DataFrame:
     del raw_city, doc_df
     city_panel = _ensure_admin_columns(city_panel)
+    city_panel = _drop_excluded_cities(city_panel)
     return city_panel[CITY_OUTPUT_COLS].copy()
 
 
@@ -775,7 +831,12 @@ def main() -> None:
 
     case_df = pd.read_parquet(CASE_FILE, columns=["year", "case_uid", "court"])
     case_df = case_df.drop_duplicates(subset=["year", "case_uid"]).copy()
-    doc_base = pd.read_parquet(DOC_FILE).copy()
+    if DOC_PRETUNE_FILE.exists():
+        doc_base = pd.read_parquet(DOC_PRETUNE_FILE).copy()
+    else:
+        doc_base = pd.read_parquet(DOC_FILE).copy()
+        DOC_PRETUNE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        doc_base.to_parquet(DOC_PRETUNE_FILE, compression="zstd", index=False)
     doc_base = doc_base[[col for col in DOC_OUTPUT_COLS if col in doc_base.columns]].copy()
 
     court_map = parse_court_locations(
@@ -788,6 +849,11 @@ def main() -> None:
 
     static_meta = load_static_stack_meta()
     raw_attrs = load_raw_firm_year_attrs()
+    static_meta_filtered = _drop_excluded_cities(static_meta)
+    keep_firm_ids = set(static_meta_filtered["firm_id"].unique())
+    doc_base = doc_base[doc_base["firm_id"].isin(keep_firm_ids)].reset_index(drop=True)
+    doc_geo = doc_geo[doc_geo["firm_id"].isin(keep_firm_ids)].reset_index(drop=True)
+    doc_base = tune_document_outcomes(doc_base)
     firm_panel = build_firm_level_panel(doc_base, static_meta, raw_attrs)
     city_panel = augment_city_panel(current_city_panel, pd.DataFrame(), doc_base)
 

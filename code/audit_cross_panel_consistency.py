@@ -79,8 +79,54 @@ def main() -> None:
     add(f"- City-year sum of `admin_case_n`: `{cy_total:,}`")
     add(f"- Unique administrative cases in case-level data: `{adm_total:,}`")
     add(
-        f"- Case-level totals do not exceed city-year totals: "
-        f"`{status(adm_total <= cy_total + 5)}`"
+        f"- Year totals coincide exactly: "
+        f"`{status(adm_total == cy_total)}`"
+    )
+
+    cell_n = (
+        adm.groupby(["province", "city", "year"])["case_no"].nunique().rename("case_n")
+    )
+    cell_gw = adm.groupby(["province", "city", "year"])["government_win"].mean().rename("case_gw")
+    cell_ap = adm.groupby(["province", "city", "year"])["appealed"].mean().rename("case_ap")
+    cell_glaw = adm.groupby(["province", "city", "year"])["government_has_lawyer"].mean().rename("case_glaw")
+    cell_olaw = adm.groupby(["province", "city", "year"])["opponent_has_lawyer"].mean().rename("case_olaw")
+    panel = (
+        cy.set_index(["province", "city", "year"])
+        .join([cell_n, cell_gw, cell_ap, cell_glaw, cell_olaw], how="left")
+        .reset_index()
+    )
+    unmatched_cells = int(panel["case_n"].isna().sum())
+    if unmatched_cells > 0:
+        add(
+            f"- City-year cells with no matching admin-case rows: `{unmatched_cells}` "
+            "(these cells should not appear once the build pipeline is up to date; flag for inspection)."
+        )
+    panel = panel.dropna(subset=["case_n"])
+
+    def share_exact(left: pd.Series, right: pd.Series, tol: float = 1e-9) -> float:
+        return float((left.sub(right).abs() < tol).mean())
+
+    add("")
+    add("Cell-level identity (every (province, city, year) row in the city-year panel):")
+    add(
+        f"- `admin_case_n` exactly equals the case-level unique-case count: "
+        f"`{int((panel['admin_case_n'] == panel['case_n']).sum()):,}` of `{len(panel):,}`"
+    )
+    add(
+        f"- `government_win_rate` exactly equals the case-level mean: "
+        f"`{int((panel['government_win_rate'].sub(panel['case_gw']).abs() < 1e-9).sum()):,}` of `{len(panel):,}`"
+    )
+    add(
+        f"- `appeal_rate` exactly equals the case-level mean: "
+        f"`{int((panel['appeal_rate'].sub(panel['case_ap']).abs() < 1e-9).sum()):,}` of `{len(panel):,}`"
+    )
+    add(
+        f"- `gov_lawyer_share` exactly equals the case-level mean: "
+        f"`{int((panel['gov_lawyer_share'].sub(panel['case_glaw']).abs() < 1e-9).sum()):,}` of `{len(panel):,}`"
+    )
+    add(
+        f"- `opp_lawyer_share` exactly equals the case-level mean: "
+        f"`{int((panel['opp_lawyer_share'].sub(panel['case_olaw']).abs() < 1e-9).sum()):,}` of `{len(panel):,}`"
     )
 
     cy_year = cy.groupby("year")["admin_case_n"].sum().rename("city_year_admin_case_n")
@@ -162,14 +208,14 @@ def main() -> None:
     firm_civil_total = int(firm["civil_case_n"].sum())
     firm_decisive_total = int(firm["civil_decisive_case_n"].sum())
     add(f"- Document-level rows: `{doc_rows:,}`")
-    add(f"- Sum of `firm_level.civil_case_n` (post-construction): `{firm_civil_total:,}`")
-    add(f"- Document-level decisive cases: `{decisive_doc:,}`")
-    add(f"- Sum of `firm_level.civil_decisive_case_n`: `{firm_decisive_total:,}`")
     add(
-        "- Note: the firm-year panel is built to support the stacked DID; "
-        "case totals are scaled to match the firm-year baseline rather than "
-        "the document sample row count, so equality here is intentionally not "
-        "imposed."
+        f"- Sum of `firm_level.civil_case_n`: `{firm_civil_total:,}` "
+        f"(equality with document-level row count: `{status(firm_civil_total == doc_rows)}`)"
+    )
+    add(f"- Document-level decisive cases: `{decisive_doc:,}`")
+    add(
+        f"- Sum of `firm_level.civil_decisive_case_n`: `{firm_decisive_total:,}` "
+        f"(equality with document-level decisive total: `{status(firm_decisive_total == decisive_doc)}`)"
     )
 
     win_le_decisive = (firm["civil_win_n_binary"] <= firm["civil_decisive_case_n"] + 1e-6).all()

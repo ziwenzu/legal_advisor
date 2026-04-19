@@ -25,12 +25,12 @@ build_output_name <- function(stem, ext) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -278,6 +278,7 @@ write_latex_table <- function(results) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Document-Level Strict DDD Estimates}",
     "\\label{tab:document_level_strict_ddd_main}",
@@ -302,22 +303,21 @@ write_latex_table <- function(results) {
     paste("Stack $\\times$ Year FE &", yes_row, "\\\\"),
     paste("Court $\\times$ Year FE &", yes_row, "\\\\"),
     paste("Cause $\\times$ Side FE &", yes_row, "\\\\"),
-    paste("Case Controls &", yes_row, "\\\\"),
-    paste("Lawyer-Year FE bins &", yes_row, "\\\\"),
+    paste("Controls (case-level) &", yes_row, "\\\\"),
+    paste("Year $\\times$ Gender FE &", yes_row, "\\\\"),
+    paste("Year $\\times$ CCP FE &", yes_row, "\\\\"),
+    paste("Year $\\times$ Education FE &", yes_row, "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients from a difference-in-difference-in-differences regression interacting Winner $\\times$ Post with an indicator for whether the firm had previously represented the government in administrative litigation in the same court.",
-      "Reasoning Share is the share of the judgment text devoted to legal reasoning;",
-      "log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section;",
-      "Case Win Binary is an indicator for the represented side prevailing among decisive cases;",
-      "Case Fee Win Rate is the represented side's fee-based win rate among decisive cases with observed fee allocation.",
-      "The sample is restricted to firms that had already handled civil cases in that court before any government-side appearance there.",
-      "Case controls include whether the opposing side has counsel and whether the plaintiff and defendant are entities. `Cause' denotes case type.",
-      "Two-way cluster-robust standard errors by firm and cleaned court appear in parentheses.",
+      "\\item \\textit{Notes:} DDD coefficients interacting Winner $\\times$ Post with an indicator for whether the firm previously represented the government in administrative litigation in the same court.",
+      "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation.",
+      "The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance.",
+      "Identification of the triple interaction comes from the rows with positive prior administrative exposure.",
+      "Case controls: opposing-counsel presence and plaintiff/defendant entity status.",
+      "Standard errors clustered by firm and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",

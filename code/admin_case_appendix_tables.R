@@ -24,12 +24,12 @@ stars <- function(p_value) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -94,6 +94,7 @@ build_court_level_table <- function(admin_dt, city_dt, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Effect of Legal Counsel Procurement by Court Level}",
     "\\label{tab:admin_by_court_level}",
@@ -108,7 +109,7 @@ build_court_level_table <- function(admin_dt, city_dt, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_cells, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_cells, collapse = " & "), "\\\\"),
-    paste("City-Year Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Controls (city-year) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("City FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -116,12 +117,10 @@ build_court_level_table <- function(admin_dt, city_dt, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Each column reports the coefficient on Treatment $\\times$ Post from a separate two-way fixed-effects regression on a (city $\\times$ year) panel restricted to cases heard at the indicated level of court.",
-      "Court level is parsed from the full court name: column 1 keeps cases adjudicated by basic-level (district) people's courts; column 2 keeps cases at intermediate, high, and specialized courts.",
-      "The dependent variable is the within-city-year share of administrative cases at that court level in which the government prevailed.",
-      "All specifications include city and year fixed effects, log population, log GDP, log registered lawyers, and log court caseload.",
-      "Cluster-robust standard errors by city appear in parentheses.",
+      "\\item \\textit{Notes:} Each column reports Treatment $\\times$ Post from a two-way fixed-effects regression on a (city $\\times$ year) panel restricted to cases heard at the indicated level of court.",
+      "Outcome is the within-city-year share of administrative cases at that court level in which the government prevailed.",
+      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -226,6 +225,7 @@ build_balance_table <- function(city_dt, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Pre-Procurement Balance Between Treated and Never-Treated Cities}",
     "\\label{tab:admin_pre_balance}",
@@ -245,13 +245,10 @@ build_balance_table <- function(city_dt, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "The Treated columns pool all city-year observations from cities that eventually adopt legal-counsel procurement, restricted to years strictly before that city's first procurement year.",
-      "The Control columns pool all city-year observations from cities that never adopt procurement during the 2014--2020 sample window.",
-      "Difference is Treated minus Control.",
-      "Normalized Difference divides the raw difference by the pooled cross-group standard deviation.",
-      "$p$-value is from a two-sample $t$-test allowing unequal variances.",
-      "Government Counsel Share and Opposing Counsel Share are the within-city-year shares of administrative cases in which the government, respectively the opposing party, appears with counsel.",
+      "\\item \\textit{Notes:} Treated columns pool city-year observations from cities that eventually adopt procurement, restricted to years strictly before each city's first procurement year.",
+      "Control columns pool city-year observations from never-procuring cities over the sample window.",
+      "Difference is Treated minus Control; Normalized Difference divides by the pooled cross-group standard deviation.",
+      "$p$-values from two-sample $t$-tests with unequal variances.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -263,14 +260,8 @@ build_balance_table <- function(city_dt, file_path) {
 }
 
 main <- function() {
-  admin_dt <- fread(admin_file)
   city_dt <- fread(city_file)
 
-  build_court_level_table(
-    admin_dt = admin_dt,
-    city_dt = city_dt,
-    file_path = file.path(table_dir, "admin_case_by_court_level_appendix_table.tex")
-  )
   build_balance_table(
     city_dt = city_dt,
     file_path = file.path(table_dir, "admin_pre_procurement_balance_appendix_table.tex")

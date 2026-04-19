@@ -20,77 +20,104 @@ stars <- function(p) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
-estimate_within_province <- function() {
+read_panel <- function() {
   city <- fread(city_path)
   city[, city_id := .GRP, by = .(province, city)]
   city[, ever_treated := as.integer(any(treatment == 1L)), by = city_id]
-  treated_provinces <- unique(city[ever_treated == 1L, province])
-  panel <- city[province %in% treated_provinces]
-  panel[, city_id := .GRP, by = .(province, city)]
+  city[, province_id := .GRP, by = province]
+  city[]
+}
+
+estimate <- function(panel, outcome, fe_terms = "city_id + year") {
+  rhs <- "treatment + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n"
+  f <- as.formula(sprintf("%s ~ %s | %s", outcome, rhs, fe_terms))
+  m <- feols(f, data = panel, cluster = ~ city_id)
+  ct <- as.data.table(coeftable(m), keep.rownames = "term")
+  row <- ct[term == "treatment"]
+  list(estimate = row[["Estimate"]], se = row[["Std. Error"]],
+       p_value = row[["Pr(>|t|)"]], n_obs = nobs(m), r2 = fitstat(m, "r2")[[1]])
+}
+
+main <- function() {
+  panel <- read_panel()
+  treated_provinces <- unique(panel[ever_treated == 1L, province])
+  in_province <- panel[province %in% treated_provinces]
 
   outcomes <- list(
     list(key = "government_win_rate", label = "Gov.\\ Win Rate"),
     list(key = "appeal_rate", label = "Appeal Rate"),
     list(key = "admin_case_n", label = "Admin.\\ Cases")
   )
-  fit <- function(outcome) {
-    f <- as.formula(sprintf(
-      "%s ~ treatment + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n | city_id + year",
-      outcome
-    ))
-    m <- feols(f, data = panel, cluster = ~ city_id)
-    ct <- as.data.table(coeftable(m), keep.rownames = "term")
-    row <- ct[term == "treatment"]
-    list(estimate = row[["Estimate"]], se = row[["Std. Error"]],
-         p_value = row[["Pr(>|t|)"]], n_obs = nobs(m), r2 = fitstat(m, "r2")[[1]])
-  }
-  lapply(outcomes, function(spec) c(spec, fit(spec$key)))
-}
 
-main <- function() {
-  results <- estimate_within_province()
-  rows <- vapply(results, function(res) {
+  rows <- vector("list", length(outcomes))
+  for (i in seq_along(outcomes)) {
+    spec <- outcomes[[i]]
+    headline <- estimate(panel, spec$key, fe_terms = "city_id + year")
+    sample_only <- estimate(in_province, spec$key, fe_terms = "city_id + year")
+    province_year <- estimate(in_province, spec$key, fe_terms = "city_id + province_id^year")
+    rows[[i]] <- list(
+      label = spec$label,
+      headline = headline,
+      sample = sample_only,
+      pyear = province_year
+    )
+  }
+
+  body <- vapply(rows, function(r) {
     paste(
-      res$label, "&",
-      paste0(fmt_num(res$estimate), stars(res$p_value)), "&",
-      paste0("(", fmt_num(res$se), ")"), "&",
-      fmt_int(res$n_obs), "&",
-      fmt_num(res$r2),
+      r$label, "&",
+      paste0(fmt_num(r$headline$estimate), stars(r$headline$p_value)), "&",
+      paste0("(", fmt_num(r$headline$se), ")"), "&",
+      paste0(fmt_num(r$sample$estimate), stars(r$sample$p_value)), "&",
+      paste0("(", fmt_num(r$sample$se), ")"), "&",
+      paste0(fmt_num(r$pyear$estimate), stars(r$pyear$p_value)), "&",
+      paste0("(", fmt_num(r$pyear$se), ")"),
       "\\\\"
+    )
+  }, character(1))
+
+  obs_row <- vapply(rows, function(r) {
+    paste(
+      "Observations &", fmt_int(r$headline$n_obs), "& --",
+      "&", fmt_int(r$sample$n_obs), "& --",
+      "&", fmt_int(r$pyear$n_obs), "& -- \\\\"
     )
   }, character(1))
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
-    "\\caption{Same-Province SUTVA Placebo for City-Year Administrative Estimates}",
+    "\\caption{Same-Province Donor-Pool Placebo for City-Year Administrative Estimates}",
     "\\label{tab:admin_within_province_appendix}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccc}",
+    "\\begin{tabular}{lcccccc}",
     "\\toprule",
-    "Outcome & Coefficient & SE & Observations & $R^2$ \\\\",
+    " & \\multicolumn{2}{c}{Headline} & \\multicolumn{2}{c}{Same-province sample} & \\multicolumn{2}{c}{+ Province $\\times$ Year FE} \\\\",
+    "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-7}",
+    "Outcome & Coef. & SE & Coef. & SE & Coef. & SE \\\\",
     "\\midrule",
-    rows,
+    body,
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on Treatment $\\times$ Post from city-year two-way fixed-effects regressions on the administrative-litigation panel.",
-      "The never-treated control group is restricted to cities in provinces that contain at least one procurement-adopting city, eliminating between-province compositional differences in the donor pool.",
-      "If the headline coefficients were inflated by province-level spillovers in unobservables that correlate with procurement timing, the within-province estimates should diverge from the headline values; they remain similar in magnitude and statistical significance.",
-      "All specifications include city and year fixed effects together with city-year controls for log population, log GDP, log registered lawyers, and log court caseload.",
-      "Cluster-robust standard errors at the city level are in parentheses.",
+      "\\item \\textit{Notes:} Each row reports Treatment $\\times$ Post from city-year two-way fixed-effects regressions for one outcome.",
+      "Headline columns reproduce the main city-year table.",
+      "Same-province sample columns restrict the never-treated control group to cities in provinces that contain at least one procurement-adopting city; specification keeps city and year fixed effects.",
+      "+ Province $\\times$ Year FE columns add province $\\times$ year fixed effects on the same restricted sample, identifying the procurement effect within province-year cells.",
+      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",

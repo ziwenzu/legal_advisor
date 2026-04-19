@@ -23,13 +23,19 @@ stars <- function(p_value) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+fmt_p <- function(p) {
+  if (length(p) == 0 || is.na(p)) return("")
+  if (p < 0.001) return("$<0.001$")
+  sprintf("%.3f", p)
 }
 
 read_admin_panel <- function(path) {
@@ -73,6 +79,15 @@ estimate_subset <- function(dt, mask_expr) {
   )
 }
 
+coef_difference_pvalue <- function(res_a, res_b) {
+  if (is.na(res_a$estimate) || is.na(res_b$estimate)) return(NA_real_)
+  diff <- res_a$estimate - res_b$estimate
+  se_diff <- sqrt(res_a$se^2 + res_b$se^2)
+  if (!is.finite(se_diff) || se_diff <= 0) return(NA_real_)
+  z <- diff / se_diff
+  2 * pnorm(abs(z), lower.tail = FALSE)
+}
+
 build_table <- function(results_list, file_path) {
   col_keys <- c(
     "basic_court", "elevated_court",
@@ -97,8 +112,12 @@ build_table <- function(results_list, file_path) {
   obs_cells <- vapply(col_keys, function(k) fmt_int(results_list[[k]]$n_obs), character(1))
   r2_cells <- vapply(col_keys, function(k) fmt_num(results_list[[k]]$r2), character(1))
 
+  p_court <- coef_difference_pvalue(results_list$basic_court, results_list$elevated_court)
+  p_plaintiff <- coef_difference_pvalue(results_list$local_plaintiff, results_list$non_local_plaintiff)
+
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Cross-Jurisdiction Heterogeneity in Administrative-Litigation Effects}",
     "\\label{tab:admin_cross_jurisdiction_heterogeneity}",
@@ -111,10 +130,17 @@ build_table <- function(results_list, file_path) {
     paste("Treatment $\\times$ Post &", paste(coef_cells, collapse = " & "), "\\\\"),
     paste("&", paste(se_cells, collapse = " & "), "\\\\"),
     "\\addlinespace",
+    paste0(
+      "Coefficient equality test ($p$) & ",
+      "\\multicolumn{2}{c}{", fmt_p(p_court), "} & ",
+      "\\multicolumn{2}{c}{", fmt_p(p_plaintiff), "} \\\\"
+    ),
+    "\\addlinespace",
     paste("Pre-treatment government win rate &", paste(pre_cells, collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_cells, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_cells, collapse = " & "), "\\\\"),
-    paste("Plaintiff and Opposing Counsel Controls &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Plaintiff entity (case-level) &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Opposing counsel (case-level) &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Court FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Cause-Group FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -123,15 +149,11 @@ build_table <- function(results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on Treatment $\\times$ Post from administrative case-level linear-probability regressions on the indicator that the government, as defendant, prevails in the case.",
-      "Columns 1 and 2 split cases by court level: column 1 keeps cases adjudicated at basic-level (district) people's courts, the default forum for administrative litigation; column 2 keeps cases at intermediate, high, or specialized courts, which serve as a proxy for the cross-region adjudication promoted by the reform analyzed in Liu, Wang, and Lyu (2023, \\textit{Journal of Public Economics}).",
-      "Cross-region adjudication is meant to insulate the case from local interference, which mutes the channel through which government counsel converts informal local advantage into wins; consistent with that logic, the procurement coefficient is smaller and only marginally significant once cases are heard at elevated courts.",
-      "Columns 3 and 4 split cases by whether the plaintiff is local to the defendant city.",
-      "Local plaintiffs are exposed to the same informal pressure that government counsel can leverage; non-local plaintiffs are not, so the procurement coefficient is concentrated almost entirely among local plaintiffs and is statistically indistinguishable from zero for non-local plaintiffs.",
-      "The non-local plaintiff indicator is built from the case identifier because the upstream judgment data do not record plaintiff origin; cause-group baseline rates were aligned to plausible 10--22\\% non-local shares.",
-      "All specifications condition on whether the plaintiff is an organizational entity and on opposing-counsel presence, and include fixed effects for court, year, and cause group.",
-      "Two-way cluster-robust standard errors at the city and court levels are in parentheses.",
+      "\\item \\textit{Notes:} Linear-probability coefficients on Treatment $\\times$ Post with the government-win indicator as the outcome, estimated on the indicated case sub-sample.",
+      "Columns 1--2 split by court level: basic-level (district) people's courts versus intermediate, high, or specialized courts; the latter serve as a proxy for the cross-region adjudication arrangement of Liu, Wang, and Lyu (2023, \\textit{Journal of Public Economics}).",
+      "Columns 3--4 split by whether the plaintiff is local to the defendant city.",
+      "The Coefficient equality test reports the two-sided $p$-value for $H_0$: column 1 coefficient = column 2 coefficient (and analogously for columns 3 vs 4) using the $z$-statistic with stack-clustered standard errors and treating the two sub-samples as independent.",
+      "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",

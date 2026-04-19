@@ -3,6 +3,7 @@
 suppressPackageStartupMessages({
   library(data.table)
   library(fixest)
+  library(stringr)
 })
 
 root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
@@ -11,6 +12,8 @@ city_path <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
+
+CASE_NO_PATTERN <- "\\((\\d{4})\\)([^\u884c\u5211\u6c11[:space:]]+?)(\u884c\u521d|\u884c\u7ec8|\u884c\u518d|\u884c\u7533|\u884c\u5176\u4ed6|\u5211\u521d|\u6c11\u521d|\u884c)(?:\u5b57\u7b2c)?(\\d+)\u53f7?"
 
 stars <- function(p_value) {
   if (length(p_value) == 0 || is.na(p_value)) return("")
@@ -21,19 +24,17 @@ stars <- function(p_value) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
-CASE_NO_PATTERN <- "\\((\\d{4})\\)([^\u884c\u5211\u6c11[:space:]]+?)(\u884c\u521d|\u884c\u7ec8|\u884c\u518d|\u884c\u7533|\u884c\u5176\u4ed6|\u5211\u521d|\u6c11\u521d|\u884c)(?:\u5b57\u7b2c)?(\\d+)\u53f7?"
-
 parse_case_numbers <- function(case_no) {
-  m <- stringr::str_match(case_no, CASE_NO_PATTERN)
+  m <- str_match(case_no, CASE_NO_PATTERN)
   data.table(
     cn_year = suppressWarnings(as.integer(m[, 2])),
     court_code = m[, 3],
@@ -43,10 +44,6 @@ parse_case_numbers <- function(case_no) {
 }
 
 main <- function() {
-  if (!requireNamespace("stringr", quietly = TRUE)) {
-    install.packages("stringr", repos = "https://cloud.r-project.org")
-  }
-
   cases <- fread(admin_path)
   parsed <- parse_case_numbers(cases$case_no)
   cases[, c("cn_year", "court_code", "procedure", "seq") := parsed]
@@ -61,49 +58,29 @@ main <- function() {
   cases[, disclosure := pmin(1.0, pmax(0.05, disclosure))]
   cases[, ipw_weight := pmin(20, 1.0 / disclosure)]
 
-  cy_admin <- cases[
+  cy_weights <- cases[
     ,
-    .(
-      government_win_rate_w = sum(government_win * ipw_weight) / sum(ipw_weight),
-      appeal_rate_w = sum(appealed * ipw_weight) / sum(ipw_weight),
-      admin_case_n_w = sum(ipw_weight),
-      mean_disclosure = sum(ipw_weight) / sum(1.0 / disclosure * 1.0)
-    ),
+    .(disclosure_weight = sum(ipw_weight)),
     by = .(province, city, year)
   ]
 
   city <- fread(city_path)
-  panel <- city[cy_admin, on = c("province", "city", "year"), nomatch = NULL]
+  panel <- city[cy_weights, on = c("province", "city", "year"), nomatch = NULL]
   panel[, city_id := .GRP, by = .(province, city)]
 
   outcomes <- list(
-    list(
-      key = "government_win_rate",
-      label = "Government Win Rate",
-      base = "government_win_rate",
-      weighted = "government_win_rate_w"
-    ),
-    list(
-      key = "appeal_rate",
-      label = "Appeal Rate",
-      base = "appeal_rate",
-      weighted = "appeal_rate_w"
-    ),
-    list(
-      key = "admin_case_n",
-      label = "Administrative Case Numbers",
-      base = "admin_case_n",
-      weighted = "admin_case_n_w"
-    )
+    list(key = "government_win_rate", label = "Gov.\\ Win Rate"),
+    list(key = "appeal_rate", label = "Appeal Rate"),
+    list(key = "admin_case_n", label = "Admin.\\ Cases")
   )
 
-  fit <- function(outcome_col, weights = NULL) {
+  fit <- function(outcome_col, weighted = FALSE) {
     rhs <- "treatment + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n"
     f <- as.formula(sprintf("%s ~ %s | city_id + year", outcome_col, rhs))
-    if (is.null(weights)) {
+    if (!weighted) {
       m <- feols(f, data = panel, cluster = ~ city_id)
     } else {
-      m <- feols(f, data = panel, weights = panel[[weights]], cluster = ~ city_id)
+      m <- feols(f, data = panel, weights = panel[["disclosure_weight"]], cluster = ~ city_id)
     }
     ct <- as.data.table(coeftable(m), keep.rownames = "term")
     row <- ct[term == "treatment"]
@@ -118,8 +95,8 @@ main <- function() {
 
   results <- list()
   for (spec in outcomes) {
-    results[[paste0(spec$key, "_baseline")]] <- fit(spec$base)
-    results[[paste0(spec$key, "_disclosure")]] <- fit(spec$weighted, weights = "admin_case_n_w")
+    results[[paste0(spec$key, "_baseline")]] <- fit(spec$key, weighted = FALSE)
+    results[[paste0(spec$key, "_disclosure")]] <- fit(spec$key, weighted = TRUE)
   }
 
   col_keys <- c(
@@ -144,6 +121,7 @@ main <- function() {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Disclosure-Weighted Robustness for the City-Year Administrative Estimates}",
     "\\label{tab:city_year_disclosure_weighted_appendix}",
@@ -158,8 +136,8 @@ main <- function() {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Disclosure-Inverse Weight &", paste(weighted_yes, collapse = " & "), "\\\\"),
-    paste("City-Year Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Disclosure-inverse weight &", paste(weighted_yes, collapse = " & "), "\\\\"),
+    paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -167,13 +145,11 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients on Treatment $\\times$ Post from city-year two-way fixed-effects regressions on the administrative-litigation panel.",
-      "Odd-numbered columns reproduce the unweighted specification of the main table.",
-      "Even-numbered columns weight each city-year by the sum of inverse disclosure probabilities of its underlying cases, where each disclosure probability is the German-tank estimate $n / \\hat{K}$ for the case's (court, year, procedure) cell with $\\hat{K} = (n+1)/n \\cdot m - 1$ following Liu, Wang, and Lyu (2023, \\textit{Journal of Public Economics}).",
-      "Weights are clipped at 20 to prevent extreme cells from dominating.",
-      "All specifications include city and year fixed effects, log population, log GDP, log registered lawyers, and log court caseload.",
-      "Cluster-robust standard errors at the city level are in parentheses.",
+      "\\item \\textit{Notes:} Outcomes match the main city-year table.",
+      "Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = (n_j+1)/n_j \\cdot m_j - 1$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}); per-case weights are clipped at 20.",
+      "The disclosure correction enters as a regression weight only; the dependent variables match the baseline columns.",
+      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",

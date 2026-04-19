@@ -20,12 +20,12 @@ stars <- function(p) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -113,7 +113,7 @@ entropy_balance <- function(city_dt, vars) {
 
 attach_weights <- function(panel, city_dt) {
   weights <- city_dt[, .(city_id, pscore, ipw_weight, eb_weight)]
-  panel <- weights[panel, on = "city_id"]
+  panel <- merge(panel, weights, by = "city_id", all.x = TRUE, sort = FALSE)
   panel[]
 }
 
@@ -246,6 +246,7 @@ main <- function() {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Selection-into-Treatment Robustness for City-Year Administrative Estimates}",
     "\\label{tab:city_year_selection_robustness_appendix}",
@@ -276,15 +277,13 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Panel A reports the coefficient on Treatment $\\times$ Post from city-year two-way fixed-effects regressions on the administrative-litigation panel under four sample-or-weight variants.",
-      "Baseline columns reproduce the unweighted main-table specification.",
-      "IPW columns weight every never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$, where the propensity score is estimated by logit on the four city-mean covariates listed in Panel B; treated cities receive unit weight.",
-      "Entropy columns reweight the never-treated cities so that the weighted means of the four covariates exactly match the treated means (Hainmueller 2012).",
-      "Caliper columns retain only never-treated cities whose four covariates fall within $\\pm 0.5$ standard deviations of the treated mean and re-estimate without weights on this comparable subsample.",
-      "Panel B reports the means of the four covariates for treated cities and for never-treated cities under no weighting, IPW reweighting, and entropy reweighting; both reweighting schemes drive the treated-control gap to essentially zero.",
-      "All Panel A regressions include city and year fixed effects and the same four covariates as controls.",
-      "Cluster-robust standard errors at the city level are in parentheses.",
+      "\\item \\textit{Notes:} Panel A reports Treatment $\\times$ Post from city-year two-way fixed-effects regressions under four sample-or-weight variants.",
+      "IPW weights each never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$, with $\\hat{p}$ estimated by logit on the four city-mean covariates in Panel B and trimmed to $[0.05, 0.95]$; treated cities receive unit weight.",
+      "Entropy reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012).",
+      "Caliper restricts the never-treated cities to those whose four covariates fall within $\\pm 0.5$ standard deviations of the treated mean and re-estimates unweighted.",
+      "Panel B reports the means of the four covariates for treated and never-treated cities under each weighting scheme.",
+      "Panel A controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",

@@ -26,12 +26,12 @@ stars <- function(p_value) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -69,12 +69,6 @@ read_admin_panel <- function(path) {
       dt[, (col) := as.integer(get(col))]
     }
   }
-
-  dt[, event_time_window := fifelse(
-    is.na(event_time) | event_time < -3 | event_time > 5,
-    NA_integer_,
-    as.integer(event_time)
-  )]
 
   setorder(dt, city_id, year, case_no)
   dt[]
@@ -176,6 +170,7 @@ build_appendix_table <- function(results_list, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Disentangling Pre-existing and New Government Counsel in Administrative Wins}",
     "\\label{tab:admin_case_level_lawyer_specs}",
@@ -214,14 +209,13 @@ build_appendix_table <- function(results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients from administrative case-level linear-probability regressions on the indicator for the government prevailing in the case.",
+      "\\item \\textit{Notes:} Linear-probability coefficients with the government-win indicator as the outcome.",
       "Column 1 reports the baseline procurement effect.",
-      "Column 2 adds the level dummy for whether the government party arrived with counsel: this absorbs the long-standing fact that some pre-procurement governments already retained lawyers, so the Treatment $\\times$ Post coefficient now isolates effects beyond pure counsel presence.",
-      "Column 3 further interacts that counsel dummy with the post-treatment indicator, separating the pre-procurement counsel premium from the additional gain when a city procures legal services on top of existing counsel.",
-      "Column 4 adds the parallel level and post interaction for opposing counsel, so the table jointly reports the four lawyer-related channels.",
-      "All specifications condition on whether the plaintiff is an organizational entity and include fixed effects for court, year, and cause group.",
-      "Two-way cluster-robust standard errors at the city and court levels are in parentheses.",
+      "Column 2 adds the level dummy for whether the government appeared with counsel.",
+      "Column 3 further interacts that counsel dummy with the post-treatment indicator.",
+      "Column 4 adds the parallel level and post interaction for opposing counsel.",
+      "All specifications condition on whether the plaintiff is an organizational entity.",
+      "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -232,7 +226,7 @@ build_appendix_table <- function(results_list, file_path) {
   writeLines(lines, con = file_path)
 }
 
-build_plaintiff_heterogeneity_table <- function(results_list, file_path) {
+build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_n) {
   col_keys <- c(
     "entity_baseline", "entity_with_opp",
     "individual_baseline", "individual_with_opp"
@@ -264,6 +258,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Heterogeneity in Procurement Effects by Plaintiff Type}",
     "\\label{tab:admin_plaintiff_heterogeneity}",
@@ -291,14 +286,11 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are coefficients from administrative case-level linear-probability regressions on the indicator that the government, as defendant, prevails in the case.",
-      "Columns 1--2 estimate the procurement effect on the subset of cases brought by an organizational entity plaintiff;",
-      "columns 3--4 estimate it on the complementary subset of cases brought by individual plaintiffs.",
-      "Even-numbered columns add an indicator for whether the opposing party appears with counsel.",
-      "Adversarial counsel response means opposing parties are more likely to retain counsel after procurement, so this control absorbs part of the post-treatment lawyer presence; once it is included, the procurement coefficient on government wins moves up because the dampening role of opposing counsel is partialled out.",
-      "All specifications include fixed effects for court, year, and cause group.",
-      "Two-way cluster-robust standard errors at the city and court levels are in parentheses.",
+      "\\item \\textit{Notes:} Linear-probability coefficients with the government-win indicator as the outcome, estimated on the indicated plaintiff sub-sample.",
+      sprintf("Entity-plaintiff sub-sample $N=%s$; individual-plaintiff sub-sample $N=%s$.",
+              fmt_int(sample_n$entity), fmt_int(sample_n$individual)),
+      "Even columns add an indicator for whether the opposing party appears with counsel.",
+      "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -351,9 +343,14 @@ main <- function() {
     model <- estimate_admin_did(sub_dt, "government_win", extra_rhs = spec$extra)
     plaintiff_results[[spec$name]] <- extract_did_coef(model)
   }
+  sample_n <- list(
+    entity = sum(dt$plaintiff_is_entity == 1L, na.rm = TRUE),
+    individual = sum(dt$plaintiff_is_entity == 0L, na.rm = TRUE)
+  )
   build_plaintiff_heterogeneity_table(
     results_list = plaintiff_results,
-    file_path = file.path(table_dir, "admin_plaintiff_heterogeneity_appendix_table.tex")
+    file_path = file.path(table_dir, "admin_plaintiff_heterogeneity_appendix_table.tex"),
+    sample_n = sample_n
   )
 }
 

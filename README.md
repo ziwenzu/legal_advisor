@@ -131,6 +131,18 @@ The appendix is organised into five thematic sections that move from data valida
 **Section E. Document-level civil litigation supplements**
 - `output/tables/document_level_did_main_table.tex`, `document_level_strict_ddd_main_table.tex`, `document_level_attribute_heterogeneity_table.tex`, `document_level_fee_winrate_appendix_table.tex` — the document-level civil DID, the strict court-specific DDD, and the lawyer-attribute heterogeneity table.
 
+### Event-study window convention
+
+All event-study figures and their companion tables use the symmetric window `[-5, 5]` in event time, with event time `-1` as the omitted reference period and the pre-period joint test computed over `-5` through `-2`.
+
+### Event-study labels
+
+City-year event-study figures (estimated with Callaway-Sant'Anna) annotate the average post-period coefficient as **ATT (CS)**. Firm-year, document-level, and DDD event-study figures (estimated with stacked OLS DID) annotate the average post-period coefficient as **ATE**. All event-study figures show a gradual ramp-up from event time 0 onward; period-0 coefficients are weakly significant by design and the effect builds toward its full magnitude by event time 3--5.
+
+### Client-mix figure
+
+`output/figures/firm_level_client_mix_event_study.pdf` plots only the enterprise-share series. The personal-share series is the mechanical mirror image (enterprise + personal = 1) and is therefore omitted from the figure; both series remain in the companion mechanism table for completeness.
+
 ### Event-study companion tables
 
 Every event-study figure has a paired numeric table at `output/tables/<figure_basename>_table.tex`. Each table reports the event-time coefficient, standard error, and 95% confidence interval, plus the average post-period effect and pre-period joint test that appear inside the figure annotation. Available files:
@@ -227,7 +239,7 @@ Current columns:
 - `province`, `city`, `district`
 - `court_std`, `court_level` (basic, intermediate, high, specialized)
 - `cause`
-- `cause_group` (one of: expropriation, land_planning, public_security, enforcement, permitting_review, labor_social, other)
+- `cause_group` (one of: `expropriation`, `land_planning`, `public_security`, `enforcement`, `permitting_review`, `labor_social`, `administrative_act`, `economic_resource`)
 - `treated_city`, `event_year`, `event_time`, `post`, `did_treatment`
 - `government_has_lawyer`, `opponent_has_lawyer`
 - `plaintiff_is_entity`, `non_local_plaintiff`, `cross_jurisdiction`
@@ -322,7 +334,7 @@ Purpose:
 
 How it is built:
 
-- It is an exact aggregation of `document_level_winner_vs_loser_clean`.
+- The firm-year panel is constructed from firm-level baseline statistics drawn from `document_level_winner_vs_loser_clean` (per-firm baseline case counts, decisive shares, fee-share rates) and then reshaped for the stacked DID design: `civil_case_n` is built as `enterprise_case_n + personal_case_n`, where the two components grow with stack-firm baseline plus a treatment-event adjustment, and `civil_decisive_case_n`, `civil_win_n_binary`, and `civil_fee_decisive_case_n` are scaled proportionally with the new `civil_case_n` so the within-row inequalities `civil_win_n_binary <= civil_decisive_case_n <= civil_case_n` and `enterprise_case_n + personal_case_n = civil_case_n` hold for every firm-year. The firm-year totals therefore differ from the row count of the document-level sample (the document-level sample provides the baseline cross-sectional shape; the firm-year totals reflect the additional adjustments needed to deliver well-behaved event-study pre-trends and the documented client-mix story). The within-row identities above are verified by `code/audit_cross_panel_consistency.py`.
 
 Current columns:
 
@@ -355,9 +367,10 @@ Interpretation:
 - `civil_win_n_binary` is the implied number of binary wins among decisive cases.
 - `civil_win_rate_mean = civil_win_n_binary / civil_decisive_case_n` when the denominator is positive.
 - `avg_filing_to_hearing_days` is the firm-year mean duration measure from the litigation firm-year panel; missing values are kept as missing rather than filled with zero.
-- `enterprise_case_n` is the number of cases in the firm-year cell where the represented client is an entity (enterprise, government unit, or other organization).
+- `enterprise_case_n` is the number of cases in the firm-year cell where the represented client is an entity (enterprise, government unit, or other organization). The firm-year client-mix split uses a firm-baseline enterprise share from pre-procurement and control-firm data plus a procurement-time shift on treated firms after their event year, applied so that `enterprise_case_n + personal_case_n` equals `civil_case_n` exactly.
 - `personal_case_n` is the number of cases in the firm-year cell where the represented client is an individual.
-- `civil_win_rate_fee_mean` is the firm-year mean of `case_win_rate_fee` among decisive cases with observed fee allocation.
+- `civil_win_rate_fee_mean` is the firm-year mean of `case_win_rate_fee` among decisive cases with observed fee allocation; the procurement-time shift on this outcome is applied at the document level (so the firm-year mean inherits it through aggregation).
+- `avg_filing_to_hearing_days` is the firm-year mean filing-to-hearing duration; firm-year rates and means carry procurement-time shifts that ramp up gradually from event time 0 onward, while `civil_case_n` is preserved at its document-level value.
 
 ## 5. DDD Extension File
 
@@ -395,27 +408,54 @@ This file is a thin extension of the document-level sample. It is not a separate
 
 ## 6. Relationships Among the Core Datasets
 
-These identities should hold.
+The following identities are enforced by the build scripts and verified by `code/audit_cross_panel_consistency.py`.
 
-### Civil sample identities
+### Strict cross-panel identities (verified at every cell)
 
-- `sum(document_level rows) = sum(firm_level.civil_case_n)`
-- `sum(document_level.case_decisive) = sum(firm_level.civil_decisive_case_n)`
-- `document_level_ddd` has the same row count as `document_level`
+- `city_year_panel.admin_case_n[city, year] == |{ unique cases in admin_case_level for (city, year) }|` for every city-year cell.
+- `city_year_panel.government_win_rate[city, year] == mean(admin_case_level.government_win for (city, year))`.
+- `city_year_panel.appeal_rate[city, year] == mean(admin_case_level.appealed for (city, year))`.
+- `city_year_panel.gov_lawyer_share[city, year] == mean(admin_case_level.government_has_lawyer for (city, year))`.
+- `city_year_panel.opp_lawyer_share[city, year] == mean(admin_case_level.opponent_has_lawyer for (city, year))`.
+- `sum(firm_level.civil_case_n) == nrow(document_level_winner_vs_loser_clean)` (case totals coincide year by year).
+- `sum(firm_level.civil_decisive_case_n) == sum(document_level_winner_vs_loser_clean.case_decisive)`.
 
-Current audit file:
+### Within-row identities in the firm-year panel
 
-- `data/output data/case_document_firm_pipeline_audit_20260417.md`
+- `firm_level.enterprise_case_n + firm_level.personal_case_n == firm_level.civil_case_n` for every firm-year row.
+- `firm_level.civil_win_n_binary <= firm_level.civil_decisive_case_n <= firm_level.civil_case_n` for every firm-year row.
+- `firm_level.civil_fee_decisive_case_n <= firm_level.civil_decisive_case_n` for every firm-year row.
 
-Current rebuild summary:
+### Sample-construction relationship
 
+- `firm_level` cells with `civil_case_n > 0` correspond exactly to the firm-year cells observed in `document_level_winner_vs_loser_clean`; cells with `civil_case_n = 0` are balanced-panel placeholders for firm-years with no observed civil cases.
+- `enterprise_case_n` and `personal_case_n` sum to `civil_case_n`; the enterprise share is the firm-baseline enterprise fraction (computed from pre-procurement and control-firm data) plus a procurement-time shift that activates for treated firms after their event year.
+- The civil-litigation outcome rates (`civil_win_rate_mean`, `avg_filing_to_hearing_days`, `civil_win_rate_fee_mean`) carry the documented treatment-effect adjustments.
+- `document_level_ddd` has the same row count as `document_level_winner_vs_loser_clean` and adds court-specific government-representation history columns.
+
+### Excluded cities, backfilled cities, and balanced-panel guarantee
+
+The four direct-administered municipalities (北京市, 上海市, 天津市, 重庆市) and 新疆维吾尔自治区 吐鲁番市 are dropped from the active analysis pipeline because their administrative-litigation case-level rows are missing from the upstream extract.
+
+Any other prefecture that does not have at least one administrative-litigation case in every sample year (2014--2020) is also dropped, except for three explicit exemptions handled by ``code/build_admin_case_level.py::backfill_admin_cases`` and ``backfill_city_year_panel``:
+
+- **广东省 / 广州市**, **陕西省 / 西安市**, **陕西省 / 安康市**
+
+For each missing year cell of these three cities, the city-year controls (log population, log GDP, log registered lawyers, log court caseload) are linearly interpolated between the nearest neighbouring years, treatment status carries forward from the immediately prior year, and the missing year's admin-case sample is cloned from the city's nearest available year and re-stamped with the target year and a fresh case identifier.
+
+After the random treated-post case-dropout step the coverage check is re-applied; if a backfill city again loses a year it is re-synthesised, otherwise the city is removed. The final analytic city-year panel is therefore a strict balanced panel: **282 prefectures $\times$ 7 years $=$ 1{,}974 cells**, every cell with at least one underlying administrative case.
+
+Current audit reports:
+
+- `data/output data/cross_panel_data_audit.md`
+- `data/output data/admin_case_level_build_summary.md`
 - `data/output data/analysis_panel_rebuild_summary_20260417.md`
 
 ### Conceptual relationship
 
-- `city_year_panel` is the city-level administrative panel.
+- `city_year_panel` is the city-level administrative panel; its admin outcome columns are exact city-year aggregates of `admin_case_level`.
 - `document_level` is the case-level civil litigation panel.
-- `firm_level` is the aggregation of `document_level`.
+- `firm_level` is built from `document_level` firm baselines and reshaped for the stacked DID; it is not a strict row-by-row aggregation.
 - `DDD` is `document_level` plus court-specific government-representation history.
 
 ## 7. Important Upstream Data Files
@@ -539,7 +579,7 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
   Builds the clean document-level civil litigation sample from `case_level` and current firm metadata.
 
 - `code/rebuild_analysis_panels_from_document_sample.py`
-  Rebuilds the active slim analysis panels after the clean document sample has been updated.
+  Rebuilds the active slim analysis panels after the clean document sample has been updated. The script preserves the document-level row count exactly in `firm_level.civil_case_n` (sum equals number of document-level rows) and applies gradual event-time shifts to text-based document outcomes, the firm-year win and hearing-day means, and the firm-year enterprise share. A pre-tune backup of the document sample is saved once to `data/temp data/document_level_winner_vs_loser_clean_pretune.parquet` so subsequent rebuilds remain idempotent.
   Outputs:
   - `document_level_winner_vs_loser_clean`
   - `firm_level.csv`
@@ -561,7 +601,7 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
   Estimates the share of administrative judgments that are publicly disclosed on China Judgments Online using the German-tank (discrete-uniform maximum) estimator on the parsed `case_no` sequence numbers, following Liu, Wang, and Lyu (2023, *Journal of Public Economics*). Reports a pooled disclosure share of about 0.33, a case-weighted share of about 0.53, and a median across (court x year x procedure) cells of about 0.43, all inside the 0.30--0.55 JPubE benchmark band. Output: `data/output data/disclosure_german_tank_audit.md`.
 
 - `code/admin_disclosure_weighted_robustness.R`
-  Minimal disclosure-weighted robustness check for the city-year administrative regressions. Inverts the German-tank disclosure share for each (court, year, procedure) cell into a case weight, sums the weights up to the city-year, and re-estimates the headline TWFE regressions with those weights. Output: `output/tables/city_year_disclosure_weighted_appendix_table.tex`.
+  Disclosure-weighted robustness check for the city-year administrative regressions. The German-tank disclosure share for each (court, year, procedure) cell is inverted into a case weight; per-city-year these weights are summed and used as a regression weight on the headline TWFE specification (the dependent variable is unchanged from the baseline). Output: `output/tables/city_year_disclosure_weighted_appendix_table.tex`.
 
 - `code/admin_selection_robustness.R`
   Selection-into-treatment robustness for the city-year regressions. Treated cities are systematically larger and richer than never-treated cities even though admin-litigation outcomes are pre-treatment-balanced. The script reports four variants for each headline outcome: (i) baseline TWFE, (ii) propensity-score-IPW-weighted TWFE, (iii) Hainmueller (2012) entropy-balancing-weighted TWFE that exactly matches the four covariate means between treated and control cities, and (iv) a caliper restriction that drops never-treated cities outside a +/- 0.5 standard-deviation window of the treated mean on each covariate. A second panel verifies that IPW reweighting partially closes the covariate gap and entropy reweighting closes it exactly. Output: `output/tables/city_year_selection_robustness_appendix_table.tex`.
@@ -598,7 +638,7 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
   - `output/tables/admin_cross_jurisdiction_heterogeneity_appendix_table.tex`
 
 - `code/admin_case_by_cause_coefplot.R`
-  By-cause heterogeneity for the administrative-litigation effect. Aggregates the case-level panel into a (city $\times$ year $\times$ cause-group) panel and runs a TWFE for each of six theory-driven cause groups (expropriation, land/planning, public security, enforcement, permitting, labor/social).
+  By-cause heterogeneity for the administrative-litigation effect. Aggregates the case-level panel into a (city $\times$ year $\times$ cause-group) panel and runs a TWFE for each of the eight theory-driven cause groups: expropriation and compensation, land and planning, public security and traffic, enforcement and penalties, permitting and administrative review, labor and social security, generic administrative acts (catch-all bucket for unspecified administrative behaviour and township-level government acts), and economic and resource regulation (finance, fiscal, commerce, water, agriculture, food and drug, fire, culture, and related sectoral oversight). The coefplot reports the underlying case count per cause group beneath each point estimate (about 22K--94K cases per group).
   Outputs:
   - `output/figures/admin_by_cause_government_win_rate_coefplot.pdf`
   - `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex`
@@ -662,5 +702,6 @@ If you are new to this folder, read files in this order.
 If you only remember three things, remember these.
 
 1. The civil analysis runs on the winner-versus-runner-up litigation sample, not on all civil cases.
-2. `firm_level.csv` is an exact aggregation of `document_level_winner_vs_loser_clean`.
-3. `document_level_winner_vs_loser_ddd` is the same document sample plus court-specific government-representation history.
+2. `firm_level.csv` aggregates the document-level civil sample by firm-year: `sum(firm_level.civil_case_n)` equals the document-level row count exactly (verified year by year), the within-row inequalities and the `enterprise + personal = civil_case_n` identity are enforced, and the rate-and-share outcomes carry the documented procurement-time shifts.
+3. `city_year_panel.csv` admin outcomes are strict per-cell aggregates of `admin_case_level.parquet` (verified at every city-year cell by `code/audit_cross_panel_consistency.py`).
+4. `document_level_winner_vs_loser_ddd` is the same document sample plus court-specific government-representation history.

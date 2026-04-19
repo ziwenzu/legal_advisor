@@ -14,12 +14,12 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
 
 fmt_num <- function(x, digits = 3) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (length(x) == 0 || is.na(x)) return("--")
+  if (length(x) == 0 || is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -30,9 +30,8 @@ stat_row <- function(label, x, digits = 3) {
     fmt_int(sum(!is.na(x))), "&",
     fmt_num(mean(x, na.rm = TRUE), digits), "&",
     fmt_num(sd(x, na.rm = TRUE), digits), "&",
-    fmt_num(quantile(x, 0.10, na.rm = TRUE), digits), "&",
-    fmt_num(median(x, na.rm = TRUE), digits), "&",
-    fmt_num(quantile(x, 0.90, na.rm = TRUE), digits),
+    fmt_num(min(x, na.rm = TRUE), digits), "&",
+    fmt_num(max(x, na.rm = TRUE), digits),
     "\\\\"
   )
 }
@@ -41,6 +40,12 @@ write_summary_table <- function(file_path) {
   city <- fread(city_path)
   admin <- fread(admin_path)
   firm <- fread(firm_path)
+
+  doc_path <- file.path(root_dir, "data", "output data", "document_level_winner_vs_loser_clean.csv")
+  doc <- fread(doc_path,
+               select = c("treated_firm","post","did_treatment","case_decisive","case_win_binary",
+                          "opponent_has_lawyer","plaintiff_party_is_entity","defendant_party_is_entity",
+                          "case_win_rate_fee","log_legal_reasoning_length_chars","legal_reasoning_share"))
 
   panel_a <- c(
     stat_row("Government win rate", city$government_win_rate),
@@ -69,6 +74,19 @@ write_summary_table <- function(file_path) {
   )
 
   panel_c <- c(
+    stat_row("Treated firm", doc$treated_firm),
+    stat_row("Post procurement", doc$post),
+    stat_row("Decisive case", doc$case_decisive),
+    stat_row("Win in decisive case", doc$case_win_binary),
+    stat_row("Opposing counsel", doc$opponent_has_lawyer),
+    stat_row("Plaintiff party entity", doc$plaintiff_party_is_entity),
+    stat_row("Defendant party entity", doc$defendant_party_is_entity),
+    stat_row("Fee-based win rate", doc$case_win_rate_fee),
+    stat_row("Legal reasoning share", doc$legal_reasoning_share),
+    stat_row("Log reasoning length", doc$log_legal_reasoning_length_chars)
+  )
+
+  panel_d <- c(
     stat_row("Civil cases per firm-year", firm$civil_case_n, digits = 0),
     stat_row("Decisive civil cases", firm$civil_decisive_case_n, digits = 0),
     stat_row("Civil win rate (decisive)", firm$civil_win_rate_mean),
@@ -80,32 +98,34 @@ write_summary_table <- function(file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
-    "\\caption{Descriptive Statistics for the Three Analytical Panels}",
+    "\\caption{Descriptive Statistics for the Four Analytical Panels}",
     "\\label{tab:summary_statistics_appendix}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccccc}",
+    "\\begin{tabular}{lccccc}",
     "\\toprule",
-    "Variable & N & Mean & SD & 10th pctile & Median & 90th pctile \\\\",
+    "Variable & N & Mean & SD & Min & Max \\\\",
     "\\midrule",
-    "\\multicolumn{7}{l}{\\textit{Panel A. City-year administrative panel}} \\\\",
+    "\\multicolumn{6}{l}{\\textit{Panel A. City-year administrative panel}} \\\\",
     panel_a,
     "\\addlinespace",
-    "\\multicolumn{7}{l}{\\textit{Panel B. Administrative case-level panel}} \\\\",
+    "\\multicolumn{6}{l}{\\textit{Panel B. Administrative case-level panel}} \\\\",
     panel_b,
     "\\addlinespace",
-    "\\multicolumn{7}{l}{\\textit{Panel C. Firm-year stacked panel}} \\\\",
+    "\\multicolumn{6}{l}{\\textit{Panel C. Civil case-level (document-level) panel}} \\\\",
     panel_c,
+    "\\addlinespace",
+    "\\multicolumn{6}{l}{\\textit{Panel D. Firm-year stacked panel}} \\\\",
+    panel_d,
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Panel A summarises the city-year administrative panel used for the headline regressions.",
-      "Panel B summarises the administrative case-level panel used in the lawyer-presence specifications, plaintiff and cross-jurisdiction heterogeneity tables, and the by-cause coefplot.",
-      "Panel C summarises the firm-year stacked panel of procurement winners and matched runner-up firms used in the firm-level civil-litigation analysis.",
-      "All variables are pooled over the 2014--2020 sample window."
+      "\\item \\textit{Notes:} Panel A is the city-year administrative panel; Panel B the administrative case-level panel; Panel C the civil case-level (document-level) panel; Panel D the firm-year stacked panel of procurement winners and matched runner-up firms.",
+      "Each row's $N$ counts cells with a non-missing value for that variable.",
+      "Variables pooled over the sample window."
     ),
     "\\end{tablenotes}",
     "\\end{threeparttable}",
@@ -161,7 +181,7 @@ draw_adoption_timeline <- function(file_path) {
   par(new = TRUE)
   plot(
     bars_x, cum_y,
-    type = "b", pch = 16, lty = 1, lwd = 2,
+    type = "o", pch = 16, lty = 1, lwd = 2,
     xlim = c(min(bars_x) - 0.5, max(bars_x) + 0.5),
     ylim = c(0, y_cum_max),
     axes = FALSE,
@@ -175,7 +195,9 @@ draw_adoption_timeline <- function(file_path) {
     "topleft",
     legend = c("New adopters (left axis)", "Cumulative (right axis)"),
     pch = c(15, 16),
+    lty = c(NA, 1),
     pt.cex = c(1.4, 1.1),
+    lwd = c(NA, 2),
     col = c("gray70", "black"),
     bty = "n",
     cex = 0.85

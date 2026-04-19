@@ -38,12 +38,12 @@ stars <- function(p_value) {
 }
 
 fmt_num <- function(x, digits = 3) {
-  if (is.na(x)) return("--")
+  if (is.na(x)) return("")
   sprintf(paste0("%.", digits, "f"), x)
 }
 
 fmt_int <- function(x) {
-  if (is.na(x)) return("--")
+  if (is.na(x)) return("")
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
@@ -57,15 +57,6 @@ single_pre_expr <- function(p_value) {
   bquote("Pre-period joint test: " * italic(p) * " = " * .(fmt_p(p_value)))
 }
 
-client_mix_pre_expr <- function(enterprise_p, personal_p) {
-  bquote(
-    atop(
-      "Pre-period joint tests",
-      "Enterprise " * italic(p) * " = " * .(fmt_p(enterprise_p)) * "; Personal " * italic(p) * " = " * .(fmt_p(personal_p))
-    )
-  )
-}
-
 read_firm_panel <- function(path) {
   dt <- fread(path)
 
@@ -74,11 +65,13 @@ read_firm_panel <- function(path) {
 
   dt[, event_time_window := fifelse(event_time < -5, NA_real_, fifelse(event_time > 5, NA_real_, event_time))]
 
-  if ("enterprise_case_n" %in% names(dt)) {
-    dt[, log_enterprise_case_n := log1p(pmax(0, enterprise_case_n))]
+  if (all(c("enterprise_case_n", "personal_case_n", "civil_case_n") %in% names(dt))) {
+    dt[, enterprise_share := fifelse(civil_case_n > 0, enterprise_case_n / civil_case_n, NA_real_)]
+    dt[, personal_share := fifelse(civil_case_n > 0, personal_case_n / civil_case_n, NA_real_)]
   }
-  if ("personal_case_n" %in% names(dt)) {
-    dt[, log_personal_case_n := log1p(pmax(0, personal_case_n))]
+
+  if ("firm_size" %in% names(dt)) {
+    dt[, log_firm_size := fifelse(!is.na(firm_size) & firm_size > 0, log(firm_size), NA_real_)]
   }
 
   setorder(dt, stack_id, firm_id, year)
@@ -88,8 +81,11 @@ read_firm_panel <- function(path) {
 estimate_main_model <- function(dt, outcome_name, sample_filter = NULL) {
   work_dt <- copy(dt)
 
-  if (!is.null(sample_filter)) {
-    work_dt <- work_dt[eval(sample_filter)]
+  base_filter <- quote(!is.na(event_time_window))
+  if (is.null(sample_filter)) {
+    work_dt <- work_dt[eval(base_filter)]
+  } else {
+    work_dt <- work_dt[eval(base_filter) & eval(sample_filter)]
   }
 
   formula_obj <- as.formula(
@@ -161,7 +157,7 @@ extract_pretest <- function(model, pre_periods = c(-5, -4, -3, -2)) {
 
   escaped_terms <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", present_terms)
   keep_pattern <- paste0("^(", paste(escaped_terms, collapse = "|"), ")$")
-  test_obj <- wald(model, keep = keep_pattern)
+  test_obj <- suppressMessages(wald(model, keep = keep_pattern, print = FALSE))
 
   list(
     stat = unname(test_obj$stat),
@@ -185,9 +181,6 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
   pre_y <- y_range[2] - 0.08 * y_span
   pre_adj <- c(0, 1)
 
-  if (outcome_label == "Log Civil Cases") {
-    ann_y <- 0.3
-  }
   if (outcome_label == "Civil Win Rate") {
     ann_y <- 0.20
     pre_y <- 0.20
@@ -196,16 +189,9 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
     ann_y <- 0.30
     pre_y <- 0.30
   }
-  if (outcome_label == "Log Firm Size") {
-    ann_y <- y_range[2] - 0.08 * y_span
-  }
   if (outcome_label == "Average Hearing Time") {
     ann_y <- 20
     pre_y <- -20
-  }
-
-  if (outcome_label == "Log Personal Cases") {
-    pre_y <- -0.2
   }
 
   pdf(file = file_path, width = 7.2, height = 5.0, family = "serif")
@@ -250,7 +236,7 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
   text(
     x = ann_x,
     y = ann_y,
-    labels = sprintf("Main DID = %s\n(SE = %s)", fmt_num(main_effect), fmt_num(main_se)),
+    labels = sprintf("ATE = %s\n(SE = %s)", fmt_num(main_effect), fmt_num(main_se)),
     adj = ann_adj,
     cex = 0.88
   )
@@ -264,20 +250,25 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
   )
 }
 
-plot_client_mix_comparison <- function(enterprise_dt, personal_dt, enterprise_effect, enterprise_se, personal_effect, personal_se, enterprise_pre_p, personal_pre_p, file_path) {
-  enterprise_dt <- copy(enterprise_dt)[, series := "Enterprise"]
-  personal_dt <- copy(personal_dt)[, series := "Personal"]
-  plot_dt <- rbindlist(list(enterprise_dt, personal_dt), use.names = TRUE)
+plot_client_mix_event <- function(event_dt, ate, se, pre_p, file_path,
+                                  y_label = "Enterprise Share of Cases") {
+  event_dt <- copy(event_dt)
+  setorder(event_dt, event_time)
 
-  x_range <- range(plot_dt$event_time, na.rm = TRUE)
-  y_range <- range(c(plot_dt$ci_lo, plot_dt$ci_hi), na.rm = TRUE)
+  x_range <- range(event_dt$event_time, na.rm = TRUE)
+  y_range <- range(c(event_dt$ci_lo, event_dt$ci_hi), na.rm = TRUE)
   y_span <- y_range[2] - y_range[1]
   if (!is.finite(y_span) || y_span <= 0) {
     y_span <- 1
   }
 
-  plot_dt[series == "Enterprise", x_plot := event_time - 0.08]
-  plot_dt[series == "Personal", x_plot := event_time + 0.08]
+  ann_x <- 2
+  ann_y <- y_range[2] + 0.04 * y_span
+  pre_x <- -4.8
+  pre_y <- y_range[2] - 0.10 * y_span
+
+  ylim_lo <- min(y_range[1] - 0.06 * y_span, pre_y) - 0.04 * y_span
+  ylim_hi <- max(y_range[2] + 0.12 * y_span, ann_y) + 0.04 * y_span
 
   pdf(file = file_path, width = 7.4, height = 5.2, family = "serif")
   op <- par(
@@ -296,9 +287,9 @@ plot_client_mix_comparison <- function(enterprise_dt, personal_dt, enterprise_ef
   plot(
     NA,
     xlim = c(x_range[1] - 0.4, x_range[2] + 0.4),
-    ylim = c(y_range[1] - 0.06 * y_span, y_range[2] + 0.12 * y_span),
+    ylim = c(ylim_lo, ylim_hi),
     xlab = "Years Since the Contract",
-    ylab = "Log Cases",
+    ylab = y_label,
     main = "",
     xaxt = "n"
   )
@@ -306,175 +297,33 @@ plot_client_mix_comparison <- function(enterprise_dt, personal_dt, enterprise_ef
   abline(h = 0, col = "black", lwd = 1)
   abline(v = -0.5, col = "gray55", lty = 2, lwd = 1)
 
-  style_map <- list(
-    Enterprise = list(pch = 16),
-    Personal = list(pch = 17)
-  )
+  segments(event_dt$event_time, event_dt$ci_lo, event_dt$event_time, event_dt$ci_hi,
+           col = "black", lwd = 1.5)
+  points(event_dt$event_time, event_dt$estimate, col = "black", pch = 16, cex = 1.15)
 
-  for (series_name in c("Enterprise", "Personal")) {
-    sub <- plot_dt[series == series_name][order(event_time)]
-    segments(sub$x_plot, sub$ci_lo, sub$x_plot, sub$ci_hi, col = "black", lwd = 1.5)
-    points(sub$x_plot, sub$estimate, col = "black", pch = style_map[[series_name]]$pch, cex = 1.15)
-  }
-
-  legend(
-    "topleft",
-    legend = c(
-      sprintf("Enterprise (DID = %s, SE = %s)", fmt_num(enterprise_effect), fmt_num(enterprise_se)),
-      sprintf("Personal (DID = %s, SE = %s)", fmt_num(personal_effect), fmt_num(personal_se))
-    ),
-    col = c("black", "black"),
-    pch = c(16, 17),
-    pt.cex = 1.1,
-    bty = "n"
+  text(
+    x = ann_x,
+    y = ann_y,
+    labels = sprintf("ATE = %s\n(SE = %s)", fmt_num(ate), fmt_num(se)),
+    adj = c(0, 1),
+    cex = 0.88
   )
 
   text(
-    x = -4.8,
-    y = 0.20,
-    labels = client_mix_pre_expr(enterprise_pre_p, personal_pre_p),
-    adj = c(0, 0),
+    x = pre_x,
+    y = pre_y,
+    labels = bquote("Pre-period joint test " * italic(p) * " = " * .(fmt_p(pre_p))),
+    adj = c(0, 1),
     cex = 0.82
   )
 }
 
-build_event_study_table <- function(event_dt, outcome_label, y_title, main_effect, main_se, main_p, pre_p, file_path,
-                                    file_label, caption) {
-  dt <- copy(event_dt)
-  setorder(dt, event_time)
-  dt[, se := (ci_hi - estimate) / 1.96]
-
-  body_lines <- vapply(seq_len(nrow(dt)), function(i) {
-    row <- dt[i]
-    if (isTRUE(row$is_ref)) {
-      paste(
-        sprintf("%d", as.integer(row$event_time)),
-        "& 0.000 & -- & -- & -- (reference) \\\\"
-      )
-    } else {
-      paste(
-        sprintf("%d", as.integer(row$event_time)),
-        "&", fmt_num(row$estimate),
-        "&", fmt_num(row$se),
-        "&", fmt_num(row$ci_lo),
-        "&", fmt_num(row$ci_hi),
-        "\\\\"
-      )
-    }
-  }, character(1))
-
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\centering",
-    sprintf("\\caption{%s}", caption),
-    sprintf("\\label{tab:%s}", file_label),
-    "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccc}",
-    "\\toprule",
-    "Event Time & Estimate & SE & 95\\% CI Low & 95\\% CI High \\\\",
-    "\\midrule",
-    body_lines,
-    "\\midrule",
-    paste0(
-      "Average post-period effect & ",
-      paste0(fmt_num(main_effect), stars(main_p)),
-      " & ", fmt_num(main_se),
-      " & -- & -- \\\\"
-    ),
-    paste0(
-      "Pre-period joint test ($p$) & ",
-      fmt_p(pre_p),
-      " & -- & -- & -- \\\\"
-    ),
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\begin{tablenotes}[flushleft]",
-    "\\footnotesize",
-    paste(
-      "\\item \\textit{Notes:}",
-      sprintf("Companion table for the %s event-study figure.", outcome_label),
-      "Each row reports the difference-in-differences coefficient at the indicated event time, with the 95\\% confidence interval obtained from two-way cluster-robust standard errors by stack and firm.",
-      "Event time $-1$ is the reference period.",
-      "The Average post-period effect line reproduces the static Winner $\\times$ Post coefficient.",
-      "The pre-period joint test is the Wald statistic that all event-time leads from $-5$ through $-2$ are jointly zero.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
-    "\\end{tablenotes}",
-    "\\end{threeparttable}",
-    "\\end{table}"
-  )
-
-  writeLines(lines, con = file_path)
+build_event_study_table <- function(...) {
+  invisible(NULL)
 }
 
-build_client_mix_event_study_table <- function(enterprise_dt, personal_dt,
-                                               enterprise_pack, personal_pack,
-                                               file_path) {
-  combined <- merge(
-    enterprise_dt[, .(event_time, est_e = estimate, se_e = (ci_hi - estimate) / 1.96, ref_e = is_ref)],
-    personal_dt[, .(event_time, est_p = estimate, se_p = (ci_hi - estimate) / 1.96, ref_p = is_ref)],
-    by = "event_time",
-    all = TRUE
-  )
-  setorder(combined, event_time)
-
-  body_lines <- vapply(seq_len(nrow(combined)), function(i) {
-    row <- combined[i]
-    e_estimate <- if (isTRUE(row$ref_e)) "0.000" else fmt_num(row$est_e)
-    e_se <- if (isTRUE(row$ref_e)) "--" else fmt_num(row$se_e)
-    p_estimate <- if (isTRUE(row$ref_p)) "0.000" else fmt_num(row$est_p)
-    p_se <- if (isTRUE(row$ref_p)) "--" else fmt_num(row$se_p)
-    paste(
-      sprintf("%d", as.integer(row$event_time)),
-      "&", e_estimate, "&", e_se, "&", p_estimate, "&", p_se, "\\\\"
-    )
-  }, character(1))
-
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\centering",
-    "\\caption{Event-Study Estimates Behind the Client-Mix Comparison Figure}",
-    "\\label{tab:firm_level_client_mix_event_study}",
-    "\\begin{threeparttable}",
-    "\\begin{tabular}{lcccc}",
-    "\\toprule",
-    " & \\multicolumn{2}{c}{log(Enterprise Cases + 1)} & \\multicolumn{2}{c}{log(Personal Cases + 1)} \\\\",
-    "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}",
-    "Event Time & Estimate & SE & Estimate & SE \\\\",
-    "\\midrule",
-    body_lines,
-    "\\midrule",
-    paste0(
-      "Average post-period effect & ",
-      paste0(fmt_num(enterprise_pack$coef$estimate), stars(enterprise_pack$coef$p_value)),
-      " & ", fmt_num(enterprise_pack$coef$se),
-      " & ", paste0(fmt_num(personal_pack$coef$estimate), stars(personal_pack$coef$p_value)),
-      " & ", fmt_num(personal_pack$coef$se), " \\\\"
-    ),
-    paste0(
-      "Pre-period joint test ($p$) & ",
-      fmt_p(enterprise_pack$pre$p_value),
-      " & -- & ",
-      fmt_p(personal_pack$pre$p_value),
-      " & -- \\\\"
-    ),
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\begin{tablenotes}[flushleft]",
-    "\\footnotesize",
-    paste(
-      "\\item \\textit{Notes:}",
-      "Companion table for the firm-level client-mix event-study figure.",
-      "Each row reports the difference-in-differences coefficient at the indicated event time for the enterprise-case (log) outcome and for the personal-case (log) outcome.",
-      "Event time $-1$ is the reference period; standard errors are two-way cluster-robust by stack and firm.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
-    "\\end{tablenotes}",
-    "\\end{threeparttable}",
-    "\\end{table}"
-  )
-
-  writeLines(lines, con = file_path)
+build_client_mix_event_study_table <- function(...) {
+  invisible(NULL)
 }
 
 build_main_table <- function(results_list, file_path) {
@@ -503,6 +352,7 @@ build_main_table <- function(results_list, file_path) {
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Stacked DID Estimates for Firm-Year Civil Litigation Outcomes}",
     "\\label{tab:firm_level_stacked_did}",
@@ -524,14 +374,10 @@ build_main_table <- function(results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are stacked difference-in-differences coefficients on Winner $\\times$ Post estimated from the firm-year panel.",
-      sprintf("The treatment group is procurement winners and the control group is %s.", control_note),
-      "Column 1 uses firm-year mean win rates among decisive civil cases.",
-      "Column 2 uses the firm-year mean filing-to-hearing time, in days, across all civil cases.",
-      "Column 3 uses the firm-year mean fee-based win rate among decisive cases with observed fee allocation.",
-      "All specifications include stack $\\times$ firm and stack $\\times$ year fixed effects.",
-      "Two-way cluster-robust standard errors by stack and firm appear in parentheses.",
+      "\\item \\textit{Notes:} Stacked DID coefficients on Winner $\\times$ Post.",
+      sprintf("Treatment group: procurement winners; control group: %s.", control_note),
+      "Estimation samples differ by column because each outcome is defined on firm-year cells with a positive denominator: column 1 keeps cells with at least one decisive civil case; column 2 keeps cells with at least one civil case and a non-missing filing-to-hearing duration; column 3 keeps cells with at least one decisive case for which the fee allocation is observed.",
+      "Standard errors clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -543,51 +389,38 @@ build_main_table <- function(results_list, file_path) {
 }
 
 build_mechanism_table <- function(results_list, file_path) {
-  column_keys <- c(
-    "log_enterprise_case_n",
-    "log_personal_case_n"
-  )
-
-  coef_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0(fmt_num(res$estimate), stars(res$p_value))
-  })
-  se_row <- sapply(column_keys, function(key) {
-    res <- results_list[[key]]
-    paste0("(", fmt_num(res$se), ")")
-  })
-  obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
-  r2_row <- sapply(column_keys, function(key) fmt_num(results_list[[key]]$r2))
+  res <- results_list[["enterprise_share"]]
+  coef <- paste0(fmt_num(res$estimate), stars(res$p_value))
+  se <- paste0("(", fmt_num(res$se), ")")
 
   lines <- c(
     "\\begin{table}[!htbp]",
+    "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
     "\\caption{Procurement Wins Reallocate Firm Caseload Toward Enterprise Clients}",
     "\\label{tab:firm_level_client_mix}",
     "\\begin{threeparttable}",
-    "\\begin{tabular}{lcc}",
+    "\\begin{tabular}{lc}",
     "\\toprule",
-    " & (1) & (2) \\\\",
-    "Outcome & log(Enterprise Cases + 1) & log(Personal Cases + 1) \\\\",
+    " & (1) \\\\",
+    "Outcome & Enterprise share \\\\",
     "\\midrule",
-    paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
-    paste("&", paste(se_row, collapse = " & "), "\\\\"),
+    paste0("Winner $\\times$ Post & ", coef, " \\\\"),
+    paste0("& ", se, " \\\\"),
     "\\addlinespace",
-    paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
-    paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste0("Observations & ", fmt_int(res$n_obs), " \\\\"),
+    paste0("$R^2$ & ", fmt_num(res$r2), " \\\\"),
+    "Stack $\\times$ Firm FE & Yes \\\\",
+    "Stack $\\times$ Year FE & Yes \\\\",
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Cell entries are stacked difference-in-differences coefficients on Winner $\\times$ Post estimated from the firm-year panel.",
-      sprintf("The treatment group is procurement winners and the control group is %s.", control_note),
-      "Outcomes are the natural log of one plus the number of civil cases the firm represents in a given year, separately for enterprise clients (column 1) and individual clients (column 2).",
-      "All specifications include stack $\\times$ firm and stack $\\times$ year fixed effects.",
-      "Two-way cluster-robust standard errors by stack and firm appear in parentheses.",
+      "\\item \\textit{Notes:} Stacked DID coefficient on Winner $\\times$ Post.",
+      sprintf("Treatment group: procurement winners; control group: %s.", control_note),
+      "Outcome is the within-firm-year share of civil cases representing enterprise clients; the personal-client share is the mechanical complement and is omitted.",
+      "Standard errors clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
     "\\end{tablenotes}",
@@ -721,11 +554,11 @@ main <- function() {
     file_path = file.path(table_dir, build_output_name("firm_level_stacked_did_main_table", "tex"))
   )
 
-  if (all(c("log_enterprise_case_n", "log_personal_case_n") %in% names(dt))) {
+  if (all(c("enterprise_share", "personal_share") %in% names(dt))) {
     client_mix_filter <- quote(civil_case_n > 0)
     client_mix_results <- list()
 
-    for (mix_outcome in c("log_enterprise_case_n", "log_personal_case_n")) {
+    for (mix_outcome in c("enterprise_share", "personal_share")) {
       mix_main <- estimate_main_model(
         dt = dt,
         outcome_name = mix_outcome,
@@ -743,28 +576,25 @@ main <- function() {
       )
     }
 
-    enterprise_pack <- client_mix_results[["log_enterprise_case_n"]]
-    personal_pack <- client_mix_results[["log_personal_case_n"]]
+    enterprise_pack <- client_mix_results[["enterprise_share"]]
+    personal_pack <- client_mix_results[["personal_share"]]
 
-    plot_client_mix_comparison(
-      enterprise_dt = enterprise_pack$event_dt,
-      personal_dt = personal_pack$event_dt,
-      enterprise_effect = enterprise_pack$coef$estimate,
-      enterprise_se = enterprise_pack$coef$se,
-      personal_effect = personal_pack$coef$estimate,
-      personal_se = personal_pack$coef$se,
-      enterprise_pre_p = enterprise_pack$pre$p_value,
-      personal_pre_p = personal_pack$pre$p_value,
+    plot_client_mix_event(
+      event_dt = enterprise_pack$event_dt,
+      ate = enterprise_pack$coef$estimate,
+      se = enterprise_pack$coef$se,
+      pre_p = enterprise_pack$pre$p_value,
       file_path = file.path(
         figure_dir,
         build_output_name("firm_level_client_mix_event_study", "pdf")
-      )
+      ),
+      y_label = "Enterprise Share of Cases"
     )
 
     build_mechanism_table(
       results_list = list(
-        log_enterprise_case_n = enterprise_pack$coef,
-        log_personal_case_n = personal_pack$coef
+        enterprise_share = enterprise_pack$coef,
+        personal_share = personal_pack$coef
       ),
       file_path = file.path(
         table_dir,
@@ -774,12 +604,31 @@ main <- function() {
 
     build_client_mix_event_study_table(
       enterprise_dt = enterprise_pack$event_dt,
-      personal_dt = personal_pack$event_dt,
       enterprise_pack = enterprise_pack,
-      personal_pack = personal_pack,
       file_path = file.path(
         table_dir,
         build_output_name("firm_level_client_mix_event_study_table", "tex")
+      )
+    )
+  }
+
+  if ("log_firm_size" %in% names(dt)) {
+    size_filter <- quote(!is.na(log_firm_size))
+    size_main <- estimate_main_model(dt, "log_firm_size", sample_filter = size_filter)
+    size_event <- estimate_event_model(dt, "log_firm_size", sample_filter = size_filter)
+    size_coef <- extract_main_coef(size_main)
+    size_pretest <- extract_pretest(size_event)
+
+    plot_event_study(
+      event_dt = extract_event_dt(size_event),
+      outcome_label = "Log Firm Size",
+      y_title = "Log Firm Size (Lawyers)",
+      main_effect = size_coef$estimate,
+      main_se = size_coef$se,
+      pre_p = size_pretest$p_value,
+      file_path = file.path(
+        figure_dir,
+        build_output_name("firm_level_log_firm_size_event_study", "pdf")
       )
     )
   }
