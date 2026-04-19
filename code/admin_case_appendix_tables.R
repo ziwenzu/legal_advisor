@@ -11,6 +11,7 @@ admin_file <- Sys.getenv(
   unset = file.path(root_dir, "data", "output data", "admin_case_level.csv")
 )
 city_file <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
+firm_file <- file.path(root_dir, "data", "output data", "firm_level.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
@@ -130,55 +131,14 @@ build_court_level_table <- function(admin_dt, city_dt, file_path) {
   writeLines(lines, con = file_path)
 }
 
-build_balance_table <- function(city_dt, file_path) {
-  city_dt <- copy(city_dt)
-  city_dt[, city_name := sprintf("%s_%s", province, city)]
-  city_dt[, ever_treated := as.integer(any(treatment == 1L)), by = city_name]
-  city_dt[
-    ,
-    first_treat_year := ifelse(any(treatment == 1L), min(year[treatment == 1L]), NA_integer_),
-    by = city_name
-  ]
-
-  treated <- city_dt[
-    ever_treated == 1L &
-      !is.na(first_treat_year) &
-      year < first_treat_year
-  ]
-  untreated <- city_dt[ever_treated == 0L]
-
-  vars <- c(
-    "government_win_rate",
-    "appeal_rate",
-    "petition_rate",
-    "admin_case_n",
-    "gov_lawyer_share",
-    "opp_lawyer_share",
-    "log_population_10k",
-    "log_gdp",
-    "log_registered_lawyers",
-    "log_court_caseload_n"
-  )
-  var_labels <- c(
-    government_win_rate = "Government Win Rate",
-    appeal_rate = "Appeal Rate",
-    petition_rate = "Petition Rate",
-    admin_case_n = "Administrative Case Numbers",
-    gov_lawyer_share = "Government Counsel Share",
-    opp_lawyer_share = "Opposing Counsel Share",
-    log_population_10k = "Log Population (10k)",
-    log_gdp = "Log GDP",
-    log_registered_lawyers = "Log Registered Lawyers",
-    log_court_caseload_n = "Log Court Caseload"
-  )
-
+balance_rows <- function(treated_dt, control_dt, vars, var_labels) {
   rows <- lapply(vars, function(v) {
-    t_vals <- treated[[v]]
-    c_vals <- untreated[[v]]
+    t_vals <- as.numeric(treated_dt[[v]])
+    c_vals <- as.numeric(control_dt[[v]])
     t_mean <- mean(t_vals, na.rm = TRUE)
     c_mean <- mean(c_vals, na.rm = TRUE)
     pooled_sd <- sqrt(((var(t_vals, na.rm = TRUE) + var(c_vals, na.rm = TRUE)) / 2))
-    nd <- (t_mean - c_mean) / pooled_sd
+    nd <- if (is.finite(pooled_sd) && pooled_sd > 0) (t_mean - c_mean) / pooled_sd else NA_real_
     test <- tryCatch(
       t.test(t_vals, c_vals, var.equal = FALSE),
       error = function(e) NULL
@@ -194,13 +154,14 @@ build_balance_table <- function(city_dt, file_path) {
       p_value = p_val
     )
   })
-  bal <- rbindlist(rows)
+  rbindlist(rows)
+}
 
+format_balance_lines <- function(bal, integer_vars = character()) {
   fmt_pretty <- function(x, var_name) {
-    if (var_name == "admin_case_n") fmt_int(x) else fmt_num(x)
+    if (var_name %in% integer_vars) fmt_int(x) else fmt_num(x)
   }
-
-  body_lines <- vapply(seq_len(nrow(bal)), function(i) {
+  vapply(seq_len(nrow(bal)), function(i) {
     row <- bal[i]
     paste(
       row$label,
@@ -217,36 +178,129 @@ build_balance_table <- function(city_dt, file_path) {
       "\\\\"
     )
   }, character(1))
+}
 
-  n_treated_cy <- nrow(treated)
-  n_treated_cities <- length(unique(treated$city_name))
-  n_control_cy <- nrow(untreated)
-  n_control_cities <- length(unique(untreated$city_name))
+build_balance_table <- function(city_dt, firm_dt, file_path) {
+  city_dt <- copy(city_dt)
+  city_dt[, city_name := sprintf("%s_%s", province, city)]
+  city_dt[, ever_treated := as.integer(any(treatment == 1L)), by = city_name]
+  city_dt[
+    ,
+    first_treat_year := ifelse(any(treatment == 1L), min(year[treatment == 1L]), NA_integer_),
+    by = city_name
+  ]
+
+  city_treated <- city_dt[
+    ever_treated == 1L &
+      !is.na(first_treat_year) &
+      year < first_treat_year
+  ]
+  city_untreated <- city_dt[ever_treated == 0L]
+
+  city_vars <- c(
+    "government_win_rate",
+    "appeal_rate",
+    "petition_rate",
+    "admin_case_n",
+    "gov_lawyer_share",
+    "opp_lawyer_share",
+    "log_population_10k",
+    "log_gdp",
+    "log_registered_lawyers",
+    "log_court_caseload_n"
+  )
+  city_labels <- c(
+    government_win_rate = "Government Win Rate",
+    appeal_rate = "Appeal Rate",
+    petition_rate = "Petition Rate",
+    admin_case_n = "Administrative Case Numbers",
+    gov_lawyer_share = "Government Counsel Share",
+    opp_lawyer_share = "Opposing Counsel Share",
+    log_population_10k = "Log Population (10k)",
+    log_gdp = "Log GDP",
+    log_registered_lawyers = "Log Registered Lawyers",
+    log_court_caseload_n = "Log Court Caseload"
+  )
+
+  city_bal <- balance_rows(city_treated, city_untreated, city_vars, city_labels)
+  city_body <- format_balance_lines(city_bal, integer_vars = "admin_case_n")
+
+  n_city_treated_cy <- nrow(city_treated)
+  n_city_treated_units <- length(unique(city_treated$city_name))
+  n_city_control_cy <- nrow(city_untreated)
+  n_city_control_units <- length(unique(city_untreated$city_name))
+
+  firm_dt <- copy(firm_dt)
+  firm_pre <- firm_dt[!is.na(event_time) & event_time < 0]
+  if ("firm_size" %in% names(firm_pre)) {
+    firm_pre[, log_firm_size := fifelse(!is.na(firm_size) & firm_size > 0, log(firm_size), NA_real_)]
+  }
+  if (all(c("enterprise_case_n", "civil_case_n") %in% names(firm_pre))) {
+    firm_pre[, enterprise_share := fifelse(civil_case_n > 0, enterprise_case_n / civil_case_n, NA_real_)]
+  }
+  firm_pre[, log_civil_case_n := fifelse(civil_case_n > 0, log(civil_case_n), NA_real_)]
+
+  firm_treated <- firm_pre[treated_firm == 1L]
+  firm_control <- firm_pre[treated_firm == 0L]
+
+  firm_vars <- c(
+    "log_firm_size",
+    "log_civil_case_n",
+    "civil_win_rate_mean",
+    "civil_win_rate_fee_mean",
+    "avg_filing_to_hearing_days",
+    "enterprise_share"
+  )
+  firm_vars <- intersect(firm_vars, names(firm_pre))
+  firm_labels <- c(
+    log_firm_size = "Log Firm Size (Lawyers)",
+    log_civil_case_n = "Log Civil Cases per Firm-Year",
+    civil_win_rate_mean = "Civil Win Rate (Decisive)",
+    civil_win_rate_fee_mean = "Fee-Based Civil Win Rate",
+    avg_filing_to_hearing_days = "Average Filing-to-Hearing Days",
+    enterprise_share = "Enterprise Share of Cases"
+  )
+  firm_bal <- balance_rows(firm_treated, firm_control, firm_vars, firm_labels)
+  firm_body <- format_balance_lines(firm_bal)
+
+  n_firm_treated_obs <- nrow(firm_treated)
+  n_firm_treated_units <- length(unique(firm_treated$firm_id))
+  n_firm_control_obs <- nrow(firm_control)
+  n_firm_control_units <- length(unique(firm_control$firm_id))
 
   lines <- c(
     "\\begin{table}[!htbp]",
     "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
-    "\\caption{Pre-Procurement Balance Between Treated and Never-Treated Cities}",
-    "\\label{tab:admin_pre_balance}",
+    "\\caption{Pre-Procurement Balance Across Treated and Control Units}",
+    "\\label{tab:pre_procurement_balance}",
     "\\begin{threeparttable}",
     "\\begin{tabular}{lccccc}",
     "\\toprule",
     "Variable & Treated Mean & Control Mean & Difference & Normalized Diff. & $p$-value \\\\",
     "\\midrule",
-    body_lines,
+    "\\multicolumn{6}{l}{\\textit{Panel A. City-year administrative panel (treated cities vs.\\ never-treated cities)}} \\\\",
+    city_body,
     "\\addlinespace",
-    paste0("City-Year Observations & ", fmt_int(n_treated_cy), " & ", fmt_int(n_control_cy),
-           " & -- & -- & -- \\\\"),
-    paste0("Distinct Cities & ", fmt_int(n_treated_cities), " & ", fmt_int(n_control_cities),
-           " & -- & -- & -- \\\\"),
+    paste0("City-Year Observations & ", fmt_int(n_city_treated_cy), " & ", fmt_int(n_city_control_cy),
+           " &  &  &  \\\\"),
+    paste0("Distinct Cities & ", fmt_int(n_city_treated_units), " & ", fmt_int(n_city_control_units),
+           " &  &  &  \\\\"),
+    "\\addlinespace",
+    "\\multicolumn{6}{l}{\\textit{Panel B. Firm-year stacked panel (procurement winners vs.\\ runner-up controls, event time $<0$)}} \\\\",
+    firm_body,
+    "\\addlinespace",
+    paste0("Firm-Year Observations & ", fmt_int(n_firm_treated_obs), " & ", fmt_int(n_firm_control_obs),
+           " &  &  &  \\\\"),
+    paste0("Distinct Firms & ", fmt_int(n_firm_treated_units), " & ", fmt_int(n_firm_control_units),
+           " &  &  &  \\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Treated columns pool city-year observations from cities that eventually adopt procurement, restricted to years strictly before each city's first procurement year.",
-      "Control columns pool city-year observations from never-procuring cities over the sample window.",
+      "\\item \\textit{Notes:} Panel A pools city-year observations from cities that eventually adopt procurement, restricted to years strictly before each city's first procurement year, against city-year observations from never-procuring cities.",
+      "Panel B pools firm-year observations from procurement winners against runner-up control firms within the same procurement stack, restricted to event time strictly less than zero.",
       "Difference is Treated minus Control; Normalized Difference divides by the pooled cross-group standard deviation.",
       "$p$-values from two-sample $t$-tests with unequal variances.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
@@ -261,11 +315,16 @@ build_balance_table <- function(city_dt, file_path) {
 
 main <- function() {
   city_dt <- fread(city_file)
+  firm_dt <- fread(firm_file)
 
   build_balance_table(
     city_dt = city_dt,
-    file_path = file.path(table_dir, "admin_pre_procurement_balance_appendix_table.tex")
+    firm_dt = firm_dt,
+    file_path = file.path(table_dir, "pre_procurement_balance_appendix_table.tex")
   )
+
+  old_path <- file.path(table_dir, "admin_pre_procurement_balance_appendix_table.tex")
+  if (file.exists(old_path)) file.remove(old_path)
 }
 
 main()

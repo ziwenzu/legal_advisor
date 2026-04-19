@@ -107,7 +107,7 @@ The appendix is organised into five thematic sections that move from data valida
 **Section A. Data construction and descriptives**
 - `output/tables/summary_statistics_appendix_table.tex` — descriptive statistics for the city-year, administrative case-level, and firm-year panels.
 - `output/figures/procurement_adoption_timeline.pdf` — annual flow and cumulative count of cities adopting legal-counsel procurement.
-- `output/tables/admin_pre_procurement_balance_appendix_table.tex` — covariate balance between treated and never-treated cities before procurement.
+- `output/tables/pre_procurement_balance_appendix_table.tex` — covariate balance between treated and control units, with Panel A on city-year administrative variables (treated vs never-treated cities, pre-procurement) and Panel B on firm-year characteristics including firm size, civil case volume, and pre-period civil win rates (procurement winners vs runner-up controls within stack, event time $<0$).
 - `data/output data/cross_panel_data_audit.md` — cross-panel totals, range checks, identity tests.
 - `data/output data/disclosure_german_tank_audit.md` — German-tank disclosure-rate audit on judgment serial numbers.
 
@@ -125,8 +125,7 @@ The appendix is organised into five thematic sections that move from data valida
 **Section D. Heterogeneity (where the effect concentrates)**
 - `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex` and the matching coefplot — by-cause heterogeneity.
 - `output/tables/admin_plaintiff_heterogeneity_appendix_table.tex` — by plaintiff entity-vs-individual.
-- `output/tables/admin_cross_jurisdiction_heterogeneity_appendix_table.tex` — by court level (basic vs elevated, the Liu-Wang-Lyu cross-region trial proxy) and by local-vs-non-local plaintiff.
-- `output/tables/admin_case_by_court_level_appendix_table.tex` — second cut by court level on the city-year aggregate.
+- `output/tables/admin_cross_jurisdiction_heterogeneity_appendix_table.tex` — by court level (basic vs elevated, the Liu-Wang-Lyu cross-region trial proxy) and by local-vs-non-local plaintiff, including a coefficient-equality test that the elevated-court and non-local-plaintiff sub-samples produce a smaller procurement effect than the basic-court and local-plaintiff baselines.
 
 **Section E. Document-level civil litigation supplements**
 - `output/tables/document_level_did_main_table.tex`, `document_level_strict_ddd_main_table.tex`, `document_level_attribute_heterogeneity_table.tex`, `document_level_fee_winrate_appendix_table.tex` — the document-level civil DID, the strict court-specific DDD, and the lawyer-attribute heterogeneity table.
@@ -143,21 +142,6 @@ City-year event-study figures (estimated with Callaway-Sant'Anna) annotate the a
 
 `output/figures/firm_level_client_mix_event_study.pdf` plots only the enterprise-share series. The personal-share series is the mechanical mirror image (enterprise + personal = 1) and is therefore omitted from the figure; both series remain in the companion mechanism table for completeness.
 
-### Event-study companion tables
-
-Every event-study figure has a paired numeric table at `output/tables/<figure_basename>_table.tex`. Each table reports the event-time coefficient, standard error, and 95% confidence interval, plus the average post-period effect and pre-period joint test that appear inside the figure annotation. Available files:
-
-- `output/tables/government_win_rate_event_study_table.tex`
-- `output/tables/appeal_rate_event_study_table.tex`
-- `output/tables/admin_case_n_event_study_table.tex`
-- `output/tables/document_level_legal_reasoning_share_event_study_table.tex`
-- `output/tables/document_level_log_legal_reasoning_length_chars_event_study_table.tex`
-- `output/tables/document_level_case_fee_win_rate_event_study_table.tex`
-- `output/tables/firm_level_civil_win_rate_mean_event_study_table.tex`
-- `output/tables/firm_level_avg_filing_to_hearing_days_event_study_table.tex`
-- `output/tables/firm_level_civil_fee_win_rate_event_study_table.tex`
-- `output/tables/firm_level_client_mix_event_study_table.tex`
-
 ### Core output figures
 
 - `output/figures/government_win_rate_event_study.pdf`
@@ -171,6 +155,7 @@ Every event-study figure has a paired numeric table at `output/tables/<figure_ba
 - `output/figures/firm_level_civil_fee_win_rate_event_study.pdf`
 - `output/figures/firm_level_avg_filing_to_hearing_days_event_study.pdf`
 - `output/figures/firm_level_client_mix_event_study.pdf`
+- `output/figures/firm_level_log_firm_size_event_study.pdf` — log firm size (lawyer headcount); shows post-procurement growth in winning firms relative to runner-up controls.
 
 ## 4. Data Structure: the Three Main Analysis Datasets
 
@@ -644,10 +629,9 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
   - `output/tables/admin_by_cause_government_win_rate_coefplot_table.tex`
 
 - `code/admin_case_appendix_tables.R`
-  Two appendix tables built off the case-level admin panel: ATT split between basic and intermediate-and-above courts, and a pre-procurement balance check between treated and never-treated cities.
+  Pre-procurement balance table covering both analytical layers: city-year administrative panel (Panel A) and firm-year stacked panel (Panel B). Reports treated vs control means, normalized differences, and unequal-variance $t$-test $p$-values; firm-side variables include log firm size (lawyer headcount), log civil case volume, civil and fee-based win rates, average filing-to-hearing days, and enterprise-share of cases. Confirms that core outcomes are balanced pre-procurement while time-invariant level differences in firm size and case volume are absorbed by the stack $\times$ firm fixed effects in the main specification. (The standalone court-level cut was folded into `admin_cross_jurisdiction_heterogeneity.R`, which now reports basic-vs-elevated and local-vs-non-local sub-samples in a single table together with a coefficient-equality test.)
   Outputs:
-  - `output/tables/admin_case_by_court_level_appendix_table.tex`
-  - `output/tables/admin_pre_procurement_balance_appendix_table.tex`
+  - `output/tables/pre_procurement_balance_appendix_table.tex`
 
 - `code/document_level_did_fixest.R`
   Main document-level DID. The lawyer-attribute heterogeneity table now combines reasoning-share, log-reasoning-length, binary win, and fee-based win-rate columns into one four-column table.
@@ -673,6 +657,7 @@ These are used mainly as controls, lawyer-year bins, or heterogeneity variables.
   - `output/figures/firm_level_civil_fee_win_rate_event_study.pdf`
   - `output/figures/firm_level_avg_filing_to_hearing_days_event_study.pdf`
   - `output/figures/firm_level_client_mix_event_study.pdf`
+  - `output/figures/firm_level_log_firm_size_event_study.pdf` (log lawyer headcount; treated firms grow post-procurement while runner-up controls do not)
 
 ## 10. Legacy or Non-Core Scripts
 

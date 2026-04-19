@@ -313,7 +313,7 @@ build_table_tex <- function(results_list, file_path) {
   obs_row <- sapply(column_keys, function(key) fmt_int(results_list[[key]]$n_obs))
   r2_row <- sapply(column_keys, function(key) {
     res <- results_list[[key]]
-    if (is.na(res$r2)) "--" else fmt_num(res$r2)
+    if (is.na(res$r2)) "" else fmt_num(res$r2)
   })
 
   lines <- c(
@@ -391,7 +391,7 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
   )
 
   fmt_aux <- function(est, se, p) {
-    if (is.na(est)) return(c("--", "--"))
+    if (is.na(est)) return(c("", ""))
     c(paste0(fmt_num(est), stars(p)), paste0("(", fmt_num(se), ")"))
   }
 
@@ -420,7 +420,7 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
   obs_row <- sapply(column_keys, function(k) fmt_int(results_list[[k]]$n_obs))
   r2_row <- sapply(column_keys, function(k) {
     res <- results_list[[k]]
-    if (is.na(res$r2)) "--" else fmt_num(res$r2)
+    if (is.na(res$r2)) "" else fmt_num(res$r2)
   })
 
   lines <- c(

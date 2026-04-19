@@ -131,7 +131,7 @@ build_appendix_table <- function(results_list, file_path) {
   )
 
   cell_with_se <- function(est, se, p) {
-    if (is.na(est)) return(c("--", "--"))
+    if (is.na(est)) return(c("", ""))
     c(paste0(fmt_num(est), stars(p)), paste0("(", fmt_num(se), ")"))
   }
 
@@ -200,7 +200,7 @@ build_appendix_table <- function(results_list, file_path) {
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Government counsel control &", paste(gov_counsel_yes, collapse = " & "), "\\\\"),
     paste("Government counsel $\\times$ Post control &", paste(gov_counsel_post_yes, collapse = " & "), "\\\\"),
-    paste("Opposing counsel controls &", paste(opp_counsel_yes, collapse = " & "), "\\\\"),
+    paste("Opposing counsel &", paste(opp_counsel_yes, collapse = " & "), "\\\\"),
     paste("Court FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Cause-Group FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -244,7 +244,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
   opp_lvl_cells <- lapply(col_keys, function(k) {
     res <- results_list[[k]]
     if (is.na(res$opp_level_estimate)) {
-      c("--", "--")
+      c("", "")
     } else {
       c(paste0(fmt_num(res$opp_level_estimate), stars(res$opp_level_p)),
         paste0("(", fmt_num(res$opp_level_se), ")"))
@@ -277,7 +277,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Opposing counsel control &", paste(opp_yes, collapse = " & "), "\\\\"),
+    paste("Opposing counsel &", paste(opp_yes, collapse = " & "), "\\\\"),
     paste("Court FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Cause-Group FE &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),

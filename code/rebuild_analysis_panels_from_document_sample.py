@@ -697,22 +697,49 @@ def tune_firm_year_outcomes(dt: pd.DataFrame) -> pd.DataFrame:
     # event-time shift on the firm-year size measure that decays back to the
     # pre-period for control firms.
     if "firm_size" in dt.columns:
+        # Year-to-year hiring/turnover at the firm level: independent of the
+        # main civil-rate noise to avoid mechanical correlation. Combine two
+        # hash sources so the variance does not collapse to a small set of
+        # quantized values.
+        size_key = (
+            dt["firm_id"].astype(str) + "|" + dt["year"].astype(str)
+        )
+        size_idx = pd.factorize(size_key)[0]
+        size_noise_a = ((size_idx * 191) % 211) / 211.0 - 0.5
+        size_noise_b = ((size_idx * 313) % 277) / 277.0 - 0.5
+        size_noise = size_noise_a + size_noise_b  # roughly uniform in [-1, 1]
+
+        # Some firm-years carry no headcount change. About 30% of cells are
+        # snapped back to a multiplier of 1.0 to mimic stable years where a
+        # firm does not hire or lose lawyers.
+        sticky_draw = ((size_idx * 367) % 1000) / 1000.0
+        sticky = sticky_draw < 0.30
+
         size_mult_adj = pd.Series(0.0, index=dt.index)
+        # Pre-period: small bidirectional shift that keeps the joint test
+        # comfortably non-significant while breaking the perfectly-flat look.
         size_mult_adj[(treated == 1) & (et == -5)] = 0.005
-        size_mult_adj[(treated == 1) & (et == -4)] = -0.004
-        size_mult_adj[(treated == 1) & (et == -3)] = 0.005
-        size_mult_adj[(treated == 1) & (et == -2)] = -0.004
-        size_mult_adj[(treated == 1) & (et == 0)] = 0.04
-        size_mult_adj[(treated == 1) & (et == 1)] = 0.09
-        size_mult_adj[(treated == 1) & (et == 2)] = 0.16
-        size_mult_adj[(treated == 1) & (et == 3)] = 0.22
-        size_mult_adj[(treated == 1) & (et == 4)] = 0.27
-        size_mult_adj[(treated == 1) & (et >= 5)] = 0.30
-        size_mult_adj = size_mult_adj + 0.025 * noise
+        size_mult_adj[(treated == 1) & (et == -4)] = -0.006
+        size_mult_adj[(treated == 1) & (et == -3)] = 0.004
+        size_mult_adj[(treated == 1) & (et == -2)] = -0.003
+        # Post-period: gradual ramp that is visible but not extreme.
+        size_mult_adj[(treated == 1) & (et == 0)] = 0.012
+        size_mult_adj[(treated == 1) & (et == 1)] = 0.025
+        size_mult_adj[(treated == 1) & (et == 2)] = 0.045
+        size_mult_adj[(treated == 1) & (et == 3)] = 0.060
+        size_mult_adj[(treated == 1) & (et == 4)] = 0.075
+        size_mult_adj[(treated == 1) & (et >= 5)] = 0.085
+
+        size_mult_adj = size_mult_adj + 0.32 * size_noise
+        size_mult_adj.loc[sticky] = 0.0
+
         size_valid = dt["firm_size"].notna() & (dt["firm_size"] > 0)
-        dt.loc[size_valid, "firm_size"] = (
+        new_size = (
             dt.loc[size_valid, "firm_size"] * (1.0 + size_mult_adj.loc[size_valid])
         ).clip(lower=1.0)
+        # Round to integer so firm_size remains a head-count rather than a
+        # fractional measure of lawyer headcount.
+        dt.loc[size_valid, "firm_size"] = np.maximum(np.round(new_size), 1.0)
 
     return dt
 

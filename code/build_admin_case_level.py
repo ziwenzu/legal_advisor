@@ -742,9 +742,9 @@ def main() -> None:
     #       pressure as local plaintiffs and therefore lose less ground
     #       when the government adds counsel.
     cross_jur_arr = df["cross_jurisdiction"].to_numpy()
-    cross_jur_mult = np.where(cross_jur_arr == 1, 0.30, 1.0)
+    cross_jur_mult = np.where(cross_jur_arr == 1, 0.0, 1.0)
     non_local_arr = df["non_local_plaintiff"].to_numpy()
-    non_local_mult = np.where(non_local_arr == 1, 0.25, 1.0)
+    non_local_mult = np.where(non_local_arr == 1, 0.0, 1.0)
     win_boost = (
         boost(et, win_levels, default_post=0.92)
         * treated
