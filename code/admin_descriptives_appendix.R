@@ -123,7 +123,7 @@ write_summary_table <- function(file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Panel A is the city-year administrative panel; Panel B the administrative case-level panel; Panel C the civil case-level (document-level) panel; Panel D the firm-year stacked panel of procurement winners and matched runner-up firms.",
+      "\\item \\textit{Note:} Panel A is the city-year administrative panel; Panel B the administrative case-level panel; Panel C the civil case-level (document-level) panel; Panel D the firm-year stacked panel of procurement winners and matched runner-up firms.",
       "Each row's $N$ counts cells with a non-missing value for that variable.",
       "Variables pooled over the sample window."
     ),

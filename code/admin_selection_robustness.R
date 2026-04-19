@@ -277,8 +277,8 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Panel A reports Treatment $\\times$ Post from city-year two-way fixed-effects regressions under four sample-or-weight variants.",
-      "IPW weights each never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$, with $\\hat{p}$ estimated by logit on the four city-mean covariates in Panel B and trimmed to $[0.05, 0.95]$; treated cities receive unit weight.",
+      "\\item \\textit{Note:} Panel A reports Treatment $\\times$ Post from city-year two-way fixed-effects regressions under four sample-or-weight variants.",
+      "Inverse-probability weighting (IPW) weights each never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$, with $\\hat{p}$ estimated by logit on the four city-mean covariates in Panel B and trimmed to $[0.05, 0.95]$; treated cities receive unit weight.",
       "Entropy reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012).",
       "Caliper restricts the never-treated cities to those whose four covariates fall within $\\pm 0.5$ standard deviations of the treated mean and re-estimates unweighted.",
       "Panel B reports the means of the four covariates for treated and never-treated cities under each weighting scheme.",

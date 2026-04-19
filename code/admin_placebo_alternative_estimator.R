@@ -137,7 +137,7 @@ main <- function() {
     "\\begin{table}[!htbp]",
     "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
-    "\\caption{Placebo Outcomes and Alternative Staggered-DID Estimator}",
+    "\\caption{Placebo Outcomes and Alternative Staggered Difference-in-Differences Estimator}",
     "\\label{tab:admin_placebo_alternative_appendix}",
     "\\begin{threeparttable}",
     "\\begin{tabular}{lcccc}",
@@ -157,7 +157,7 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Panel A outcomes are the within-city-year share of cases that are withdrawn (row 1) or that end without a judgment on the merits (row 2).",
+      "\\item \\textit{Note:} Panel A outcomes are the within-city-year share of cases that are withdrawn (row 1) or that end without a judgment on the merits (row 2).",
       "Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the residual category that is omitted to avoid collinearity.",
       "Panel C re-estimates the three headline outcomes with the Sun and Abraham (2021) interaction-weighted estimator.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",

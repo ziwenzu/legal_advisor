@@ -336,16 +336,16 @@ build_table_tex <- function(results_list, file_path) {
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("City FE &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
-    paste("Year FE &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
+    paste("City Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
+    paste("Year Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:}",
-      "Odd columns report the average treatment effect on the treated from the Callaway and Sant'Anna staggered estimator with never-treated cities as the comparison group;",
-      "even columns report Treatment $\\times$ Post from a two-way fixed-effects regression.",
+      "\\item \\textit{Note:}",
+      "Odd columns report the average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group;",
+      "even columns report Treatment $\\times$ Post from a two-way fixed-effects (TWFE) regression.",
       "Controls include log population, log GDP, log registered lawyers, and log court caseload.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
@@ -385,9 +385,9 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
     "admin_case_n_baseline", "admin_case_n_lawyer"
   )
   outcome_short <- c(
-    "Gov.\\ Win Rate", "Gov.\\ Win Rate",
+    "Government Win Rate", "Government Win Rate",
     "Appeal Rate", "Appeal Rate",
-    "Admin.\\ Cases", "Admin.\\ Cases"
+    "Administrative Cases", "Administrative Cases"
   )
 
   fmt_aux <- function(est, se, p) {
@@ -448,14 +448,14 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("City FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Year FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Year Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Each pair of columns reports baseline and lawyer-share specifications for one outcome.",
+      "\\item \\textit{Note:} Each pair of columns reports baseline and lawyer-share specifications for one outcome.",
       "Even columns add three contemporaneous city-year controls: the share of administrative cases in which the government appears with counsel, the share in which the opposing party appears with counsel, and the share involving petitioning behaviour.",
       "Baseline city-year controls are log population, log GDP, log registered lawyers, and log court caseload.",
       "Standard errors clustered by city.",

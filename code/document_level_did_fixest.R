@@ -388,7 +388,7 @@ build_main_table <- function(main_results, robust_results, file_path) {
     "\\begin{table}[!htbp]",
     "\\setlength{\\abovecaptionskip}{0pt}",
     "\\centering",
-    "\\caption{Document-Level DID Estimates}",
+    "\\caption{Document-Level Difference-in-Differences Estimates}",
     "\\label{tab:document_level_did_main}",
     "\\begin{threeparttable}",
     "\\begin{tabular}{lcccccc}",
@@ -401,11 +401,11 @@ build_main_table <- function(main_results, robust_results, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Firm FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
-    paste("Court $\\times$ Year FE &", paste(c("", "", "", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
-    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Court FE &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
+    paste("Firm Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year Fixed Effects &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year Fixed Effects &", paste(c("", "", "", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
+    paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Court Fixed Effects &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
     paste("Controls (case-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Controls (lawyer-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -413,9 +413,9 @@ build_main_table <- function(main_results, robust_results, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Document-level DID coefficients on Winner $\\times$ Post.",
+      "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, CCP membership, education, and standardized practice years.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, Chinese Communist Party (CCP) membership, education, and standardized practice years.",
       "Standard errors clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -456,10 +456,10 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Firm FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Stack $\\times$ Year FE &", paste(c("Yes", ""), collapse = " & "), "\\\\"),
-    paste("Court $\\times$ Year FE &", paste(c("", "Yes"), collapse = " & "), "\\\\"),
-    paste("Cause $\\times$ Side FE &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Firm Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year Fixed Effects &", paste(c("Yes", ""), collapse = " & "), "\\\\"),
+    paste("Court $\\times$ Year Fixed Effects &", paste(c("", "Yes"), collapse = " & "), "\\\\"),
+    paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Controls (case-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Controls (lawyer-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -467,9 +467,9 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Document-level DID coefficients on Winner $\\times$ Post.",
+      "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, CCP membership, education, and standardized practice years.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, Chinese Communist Party (CCP) membership, education, and standardized practice years.",
       "Standard errors clustered by firm and stack in column 1 and by firm and court in column 2.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -485,13 +485,13 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
   base_keys <- c("legal_reasoning_share", "log_legal_reasoning_length_chars", "case_win_binary")
   panel_order <- c("ccp", "gender", "seniority", "masterplus")
   panel_titles <- c(
-    ccp = "Panel A. Political heterogeneity (CCP membership)",
+    ccp = "Panel A. Political heterogeneity (Chinese Communist Party membership)",
     gender = "Panel B. Gender heterogeneity",
     seniority = "Panel C. Experience heterogeneity (years of practice)",
     masterplus = "Panel D. Educational heterogeneity (master's or above)"
   )
   diff_labels <- c(
-    ccp = "Winner $\\times$ Post $\\times$ CCP",
+    ccp = "Winner $\\times$ Post $\\times$ Party Membership",
     gender = "Winner $\\times$ Post $\\times$ Female",
     seniority = "Winner $\\times$ Post $\\times$ Seniority (std.)",
     masterplus = "Winner $\\times$ Post $\\times$ Master+"
@@ -566,7 +566,7 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Notes:} Each panel reports two coefficients per outcome: the level Winner $\\times$ Post effect and the differential Winner $\\times$ Post $\\times$ Attribute.",
+      "\\item \\textit{Note:} Each panel reports two coefficients per outcome: the level Winner $\\times$ Post effect and the differential Winner $\\times$ Post $\\times$ Attribute.",
       "Outcomes: legal-reasoning share (col.\\ 1), log reasoning length plus one (col.\\ 2), binary win in decisive cases (col.\\ 3), fee-based win rate in decisive cases with observed fee (col.\\ 4).",
       "All regressions include firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects; year-by-attribute fixed effects that absorb the level effect of each lawyer attribute; and case-level controls for opposing-side representation and plaintiff/defendant entity status.",
       "Standard errors clustered by firm and stack.",
