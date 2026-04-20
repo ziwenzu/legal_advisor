@@ -375,7 +375,7 @@ build_main_table <- function(results_list, file_path) {
       sprintf("Treatment group: procurement winners; control group: %s.", control_note),
       "Estimation samples differ by column because each outcome is defined on firm-year cells with a positive denominator: column 1 keeps cells with at least one decisive civil case; column 2 keeps cells with at least one civil case and a non-missing filing-to-hearing duration; column 3 keeps cells with at least one decisive case for which the fee allocation is observed.",
       "All firm-year specifications are estimated on the event-time window [-5, 5], matching the firm-level event-study figures.",
-      "Because outcomes are already collapsed to the firm-year level, the stacked DID does not add case-level controls.",
+      "Because outcomes are already collapsed to the firm-year level, the stacked DID does not add case controls.",
       "Standard errors clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

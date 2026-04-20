@@ -1,0 +1,40 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Disentangling Pre-existing and New Government Counsel in Administrative Wins}
+\label{tab:admin_case_level_lawyer_specs}
+\begin{threeparttable}
+\begin{tabular}{lcccc}
+\toprule
+ & (1) & (2) & (3) & (4) \\
+Outcome & Government Win & Government Win & Government Win & Government Win \\
+\midrule
+Treatment $\times$ Post & 0.033$^{***}$ & 0.030$^{***}$ & 0.028$^{***}$ & 0.026$^{***}$ \\
+& (0.005) & (0.005) & (0.006) & (0.006) \\
+\addlinespace
+Government counsel (1/0) &  & 0.056$^{***}$ & 0.055$^{***}$ & 0.056$^{***}$ \\
+&  & (0.003) & (0.003) & (0.003) \\
+Government counsel $\times$ Post &  &  & 0.003 & 0.002 \\
+&  &  & (0.004) & (0.004) \\
+Opposing counsel &  &  &  & -0.040$^{***}$ \\
+&  &  &  & (0.002) \\
+Opposing counsel $\times$ Post &  &  &  & 0.013$^{***}$ \\
+&  &  &  & (0.003) \\
+\addlinespace
+Observations & 659,171 & 659,171 & 659,171 & 659,171 \\
+$R^2$ & 0.040 & 0.043 & 0.043 & 0.045 \\
+Plaintiff entity & Yes & Yes & Yes & Yes \\
+Government counsel &  & Yes & Yes & Yes \\
+Government counsel $\times$ Post &  &  & Yes & Yes \\
+Opposing counsel &  &  &  & Yes \\
+Court Fixed Effects & Yes & Yes & Yes & Yes \\
+Year Fixed Effects & Yes & Yes & Yes & Yes \\
+Cause-Group Fixed Effects & Yes & Yes & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Linear-probability coefficients with the government-win indicator as the outcome. Column 1 reports the baseline procurement effect. Column 2 adds the level dummy for whether the government appeared with counsel. Column 3 further interacts that counsel dummy with the post-treatment indicator. Column 4 adds the parallel level and post interaction for opposing counsel. All specifications condition on whether the plaintiff is an organizational entity. Standard errors clustered by city and court. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

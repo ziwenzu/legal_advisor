@@ -72,7 +72,7 @@ write_summary_table <- function(file_path) {
     stat_row("Government win", admin$government_win),
     stat_row("Appealed", admin$appealed),
     stat_row("Petitioned", admin$petitioned),
-    stat_row("Government has counsel", admin$government_has_lawyer),
+    stat_row("Government counsel (1/0)", admin$government_has_lawyer),
     stat_row("Opposing party has counsel", admin$opponent_has_lawyer),
     stat_row("Plaintiff is entity", admin$plaintiff_is_entity),
     stat_row("Non-local plaintiff", admin$non_local_plaintiff),

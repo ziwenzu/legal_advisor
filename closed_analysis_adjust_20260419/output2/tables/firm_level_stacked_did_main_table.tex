@@ -1,0 +1,27 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Stacked Difference-in-Differences Estimates for Firm-Year Civil Litigation Outcomes}
+\label{tab:firm_level_stacked_did}
+\begin{threeparttable}
+\begin{tabular}{lccc}
+\toprule
+ & (1) & (2) & (3) \\
+Outcome & Civil Win Rate & Average Hearing Days & Fee-Based Win Rate \\
+\midrule
+Winner $\times$ Post & 0.016 & -2.314 & 0.044$^{***}$ \\
+& (0.013) & (3.251) & (0.014) \\
+\addlinespace
+Sample & Decisive civil cases & Civil cases & Decisive cases with fee share \\
+Observations & 13,279 & 13,649 & 12,229 \\
+$R^2$ & 0.372 & 0.452 & 0.400 \\
+Stack $\times$ Firm Fixed Effects & Yes & Yes & Yes \\
+Stack $\times$ Year Fixed Effects & Yes & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Stacked difference-in-differences (DID) coefficients on Winner $\times$ Post. Treatment group: procurement winners; control group: matched runner-up firms within the same stack. Estimation samples differ by column because each outcome is defined on firm-year cells with a positive denominator: column 1 keeps cells with at least one decisive civil case; column 2 keeps cells with at least one civil case and a non-missing filing-to-hearing duration; column 3 keeps cells with at least one decisive case for which the fee allocation is observed. All firm-year specifications are estimated on the event-time window [-5, 5], matching the firm-level event-study figures. Because outcomes are already collapsed to the firm-year level, the stacked DID does not add case controls. Standard errors clustered by stack and firm. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

@@ -1,0 +1,31 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Document-Level Fee-Based Win-Rate Robustness}
+\label{tab:document_level_fee_winrate_appendix}
+\begin{threeparttable}
+\begin{tabular}{lcc}
+\toprule
+ & (1) & (2) \\
+Outcome & Case Fee Win Rate & Case Fee Win Rate \\
+\midrule
+Winner $\times$ Post & 0.004 & 0.005 \\
+& (0.015) & (0.013) \\
+\addlinespace
+Sample & Decisive cases with fee share & Decisive cases with fee share \\
+Observations & 687,599 & 687,599 \\
+$R^2$ & 0.315 & 0.342 \\
+Case Controls & Yes & Yes \\
+Lawyer Controls & Yes & Yes \\
+Firm Fixed Effects & Yes & Yes \\
+Stack $\times$ Year Fixed Effects & Yes &  \\
+Court $\times$ Year Fixed Effects &  & Yes \\
+Cause $\times$ Side Fixed Effects & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\times$ Post. Outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation. Case controls: opposing-side representation, plaintiff and defendant entity status. Standardized practice years enters linearly; year-by-gender, year-by-Chinese Communist Party (CCP), and year-by-education fixed effects absorb time-varying lawyer-composition effects. Standard errors clustered by firm and stack in column 1 and by firm and court in column 2. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

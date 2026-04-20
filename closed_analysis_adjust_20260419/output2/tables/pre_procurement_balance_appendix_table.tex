@@ -1,0 +1,43 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Pre-Procurement Balance Across Treated and Control Units}
+\label{tab:pre_procurement_balance}
+\begin{threeparttable}
+\begin{tabular}{lccccc}
+\toprule
+Variable & Treated Mean & Control Mean & Difference & Normalized Diff. & $p$-value \\
+\midrule
+\multicolumn{6}{l}{\textit{Panel A. City-year administrative panel (treated cities vs.\ never-treated cities)}} \\
+Government Win Rate & 0.710 & 0.700 & 0.010 & 0.091 & 0.089$^{*}$ \\
+Appeal Rate & 0.449 & 0.453 & -0.004 & -0.035 & 0.515 \\
+Petition Rate & 0.313 & 0.313 & 0.000 & 0.001 & 0.987 \\
+Administrative Case Numbers & 273 & 230 & 43 & 0.237 & 0.000$^{***}$ \\
+Government Counsel Share & 0.451 & 0.479 & -0.029 & -0.185 & 0.001$^{***}$ \\
+Opposing Counsel Share & 0.369 & 0.362 & 0.008 & 0.089 & 0.092$^{*}$ \\
+Log Population (10k) & 5.939 & 5.590 & 0.348 & 0.524 & 0.000$^{***}$ \\
+Log GDP & 7.420 & 6.877 & 0.543 & 0.734 & 0.000$^{***}$ \\
+Log Registered Lawyers & 5.877 & 5.338 & 0.540 & 0.616 & 0.000$^{***}$ \\
+Log Court Caseload & 8.741 & 8.374 & 0.367 & 0.457 & 0.000$^{***}$ \\
+\addlinespace
+City-Year Observations & 1,024 & 520 &  &  &  \\
+Distinct Cities & 217 & 65 &  &  &  \\
+\addlinespace
+\multicolumn{6}{l}{\textit{Panel B. Firm-year stacked panel (procurement winners vs.\ runner-up controls, event time $<0$)}} \\
+Log Firm Size (Lawyers) & 3.589 & 3.271 & 0.318 & 0.328 & 0.000$^{***}$ \\
+Log Civil Cases per Firm-Year & 2.981 & 2.391 & 0.590 & 0.347 & 0.000$^{***}$ \\
+Civil Win Rate (Decisive) & 0.518 & 0.514 & 0.004 & 0.014 & 0.608 \\
+Fee-Based Civil Win Rate & 0.516 & 0.520 & -0.004 & -0.015 & 0.619 \\
+Average Filing-to-Hearing Days & 148.235 & 148.963 & -0.728 & -0.007 & 0.764 \\
+Enterprise Share of Cases & 0.262 & 0.257 & 0.005 & 0.021 & 0.440 \\
+\addlinespace
+Firm-Year Observations & 2,134 & 13,516 &  &  &  \\
+Distinct Firms & 266 & 1,699 &  &  &  \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Panel A pools city-year observations from cities that eventually adopt procurement, restricted to years strictly before each city's first procurement year, against city-year observations from never-procuring cities. Panel B pools firm-year observations from procurement winners against runner-up control firms within the same procurement stack, restricted to event time strictly less than zero. Difference is Treated minus Control; Normalized Difference divides by the pooled cross-group standard deviation. Panel B observations are firm-year cells; the two-sample $t$-tests treat those cells as independent, and distinct-firm counts are reported separately. $p$-values from two-sample $t$-tests with unequal variances. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

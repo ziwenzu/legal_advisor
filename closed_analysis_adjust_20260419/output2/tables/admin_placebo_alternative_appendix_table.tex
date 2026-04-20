@@ -1,0 +1,34 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Placebo Outcomes and Alternative Staggered Difference-in-Differences Estimator}
+\label{tab:admin_placebo_alternative_appendix}
+\begin{threeparttable}
+\begin{tabular}{lcccc}
+\toprule
+Outcome & Coefficient & SE & Observations & $R^2$ \\
+\midrule
+\multicolumn{5}{l}{\textit{Panel A. Process-margin placebo}} \\
+Case withdrawal rate & -0.002 & (0.009) & 1,974 & 0.573 \\
+End-without-judgment rate & -0.000 & (0.001) & 1,974 & 0.360 \\
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel B. Cause-mix stability placebo}} \\
+Share: expropriation & 0.005 & (0.004) & 1,974 & 0.629 \\
+Share: land/planning & -0.000 & (0.004) & 1,974 & 0.644 \\
+Share: public security & 0.002 & (0.002) & 1,974 & 0.626 \\
+Share: enforcement & -0.001 & (0.003) & 1,974 & 0.599 \\
+Share: permitting & -0.004 & (0.004) & 1,974 & 0.659 \\
+Share: labor/social & -0.000 & (0.003) & 1,974 & 0.740 \\
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel C. Sun and Abraham (2021) interaction-weighted ATT}} \\
+Government Win Rate & 0.051$^{***}$ & (0.007) & 1,973 & 0.633 \\
+Appeal Rate & -0.092$^{***}$ & (0.007) & 1,973 & 0.685 \\
+Administrative Cases & -61.944$^{***}$ & (9.999) & 1,973 & 0.845 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Panel A outcomes are the within-city-year share of cases that are withdrawn (row 1) or that end without a judgment on the merits (row 2). Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the omitted residual categories administrative acts and economic and resource regulation. Panel C re-estimates the three headline outcomes with the Sun and Abraham (2021) interaction-weighted estimator. City-year controls: log population, log GDP, log registered lawyers, log court caseload. Standard errors clustered by city. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

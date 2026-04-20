@@ -83,6 +83,22 @@ estimate_admin_did <- function(dt, outcome_name, extra_rhs = character(0)) {
   feols(formula_obj, data = dt, cluster = ~ city_id + court_id)
 }
 
+estimate_plaintiff_equality_pvalue <- function(dt, extra_rhs = character(0)) {
+  rhs_terms <- c(
+    "did_treatment * plaintiff_is_entity",
+    extra_rhs
+  )
+  formula_obj <- as.formula(sprintf(
+    "government_win ~ %s | court_id + year + cause_group",
+    paste(rhs_terms, collapse = " + ")
+  ))
+  model <- feols(formula_obj, data = dt, cluster = ~ city_id + court_id)
+  ct <- as.data.table(coeftable(model), keep.rownames = "term")
+  row <- ct[term %in% c("did_treatment:plaintiff_is_entity", "plaintiff_is_entity:did_treatment")]
+  if (nrow(row) == 0) return(NA_real_)
+  row[["Pr(>|t|)"]][1]
+}
+
 extract_did_coef <- function(model) {
   ct <- as.data.table(coeftable(model), keep.rownames = "term")
   did_row <- ct[term == "did_treatment"]
@@ -177,7 +193,7 @@ build_appendix_table <- function(results_list, file_path) {
     paste("Treatment $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
-    paste("Government has counsel &",
+    paste("Government counsel (1/0) &",
           paste(sapply(gov_lvl_cells, `[`, 1), collapse = " & "), "\\\\"),
     paste("&", paste(sapply(gov_lvl_cells, `[`, 2), collapse = " & "), "\\\\"),
     paste("Government counsel $\\times$ Post &",
@@ -192,8 +208,9 @@ build_appendix_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Government counsel control &", paste(gov_counsel_yes, collapse = " & "), "\\\\"),
-    paste("Government counsel $\\times$ Post control &", paste(gov_counsel_post_yes, collapse = " & "), "\\\\"),
+    paste("Plaintiff entity &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Government counsel &", paste(gov_counsel_yes, collapse = " & "), "\\\\"),
+    paste("Government counsel $\\times$ Post &", paste(gov_counsel_post_yes, collapse = " & "), "\\\\"),
     paste("Opposing counsel &", paste(opp_counsel_yes, collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -220,7 +237,7 @@ build_appendix_table <- function(results_list, file_path) {
   writeLines(lines, con = file_path)
 }
 
-build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_n) {
+build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_n, equality_pvalues) {
   col_keys <- c(
     "entity_baseline", "entity_with_opp",
     "individual_baseline", "individual_with_opp"
@@ -249,6 +266,11 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
   r2_row <- sapply(col_keys, function(k) fmt_num(results_list[[k]]$r2))
   opp_yes <- c("", "Yes", "", "Yes")
   sample_row <- c("Entity plaintiff", "Entity plaintiff", "Individual plaintiff", "Individual plaintiff")
+  equality_row <- sprintf(
+    "Equality-test p-value & \\multicolumn{2}{c}{Cols. 1 = 3: %s} & \\multicolumn{2}{c}{Cols. 2 = 4: %s} \\\\",
+    fmt_p(equality_pvalues$baseline),
+    fmt_p(equality_pvalues$with_opp)
+  )
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -271,6 +293,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
+    equality_row,
     paste("Opposing counsel &", paste(opp_yes, collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -284,6 +307,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
       sprintf("Entity-plaintiff sub-sample $N=%s$; individual-plaintiff sub-sample $N=%s$.",
               fmt_int(sample_n$entity), fmt_int(sample_n$individual)),
       "Even columns add an indicator for whether the opposing party appears with counsel.",
+      "The equality-test row reports two-sided $p$-values for equality of the procurement coefficient between entity- and individual-plaintiff cases, estimated from the corresponding pooled interaction specification.",
       "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -341,10 +365,15 @@ main <- function() {
     entity = sum(dt$plaintiff_is_entity == 1L, na.rm = TRUE),
     individual = sum(dt$plaintiff_is_entity == 0L, na.rm = TRUE)
   )
+  equality_pvalues <- list(
+    baseline = estimate_plaintiff_equality_pvalue(dt, extra_rhs = character(0)),
+    with_opp = estimate_plaintiff_equality_pvalue(dt, extra_rhs = "opponent_has_lawyer")
+  )
   build_plaintiff_heterogeneity_table(
     results_list = plaintiff_results,
     file_path = file.path(table_dir, "admin_plaintiff_heterogeneity_appendix_table.tex"),
-    sample_n = sample_n
+    sample_n = sample_n,
+    equality_pvalues = equality_pvalues
   )
 }
 

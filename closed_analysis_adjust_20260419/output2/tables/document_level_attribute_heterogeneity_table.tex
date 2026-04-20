@@ -1,0 +1,59 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Document-Level Heterogeneity by Lawyer Attributes}
+\label{tab:document_level_attribute_heterogeneity}
+\begin{threeparttable}
+\begin{tabular}{lcccc}
+\toprule
+ & (1) & (2) & (3) & (4) \\
+Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary & Case Fee Win Rate \\
+\midrule
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel A. Political heterogeneity (Chinese Communist Party membership)}} \\
+Winner $\times$ Post & 0.002 & 0.035 & -0.008 & -0.009 \\
+& (0.003) & (0.031) & (0.014) & (0.017) \\
+Winner $\times$ Post $\times$ Party Membership & -0.002 & -0.051 & 0.033 & 0.045 \\
+& (0.005) & (0.058) & (0.024) & (0.030) \\
+Observations & 1,338,953 & 1,338,953 & 961,555 & 681,100 \\
+$R^2$ & 0.129 & 0.131 & 0.251 & 0.316 \\
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel B. Gender heterogeneity}} \\
+Winner $\times$ Post & 0.003 & 0.046 & 0.002 & -0.004 \\
+& (0.004) & (0.032) & (0.015) & (0.019) \\
+Winner $\times$ Post $\times$ Female & -0.005 & -0.064 & 0.000 & 0.019 \\
+& (0.005) & (0.056) & (0.023) & (0.028) \\
+Observations & 1,351,683 & 1,351,683 & 971,341 & 687,599 \\
+$R^2$ & 0.129 & 0.130 & 0.250 & 0.315 \\
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel C. Experience heterogeneity (years of practice)}} \\
+Winner $\times$ Post & 0.001 & 0.020 & 0.002 & 0.003 \\
+& (0.003) & (0.027) & (0.012) & (0.015) \\
+Winner $\times$ Post $\times$ Seniority (std.) & 0.002 & 0.016 & 0.011 & 0.017 \\
+& (0.002) & (0.022) & (0.010) & (0.012) \\
+Observations & 1,338,953 & 1,338,953 & 961,555 & 681,100 \\
+$R^2$ & 0.129 & 0.131 & 0.251 & 0.316 \\
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel D. Educational heterogeneity (master's or above)}} \\
+Winner $\times$ Post & 0.002 & 0.035 & 0.003 & 0.004 \\
+& (0.003) & (0.029) & (0.014) & (0.017) \\
+Winner $\times$ Post $\times$ Master+ & -0.006 & -0.078 & -0.005 & 0.002 \\
+& (0.005) & (0.064) & (0.023) & (0.027) \\
+Observations & 1,351,683 & 1,351,683 & 971,341 & 687,599 \\
+$R^2$ & 0.129 & 0.130 & 0.250 & 0.315 \\
+\addlinespace
+Case Controls & Yes & Yes & Yes & Yes \\
+Lawyer Controls & Yes & Yes & Yes & Yes \\
+Firm Fixed Effects & Yes & Yes & Yes & Yes \\
+Stack $\times$ Year Fixed Effects & Yes & Yes & Yes & Yes \\
+Court Fixed Effects & Yes & Yes & Yes & Yes \\
+Cause $\times$ Side Fixed Effects & Yes & Yes & Yes & Yes \\
+Year $\times$ Lawyer-Attribute Fixed Effects & Yes & Yes & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Each panel reports two coefficients per outcome: the level Winner $\times$ Post effect and the differential Winner $\times$ Post $\times$ Attribute. Outcomes: legal-reasoning share (col.\ 1), log reasoning length plus one (col.\ 2), binary win in decisive cases (col.\ 3), fee-based win rate in decisive cases with observed fee (col.\ 4). All regressions include case controls for opposing-side representation and plaintiff/defendant entity status, standardized practice-years controls, firm, stack $\times$ year, court, and cause $\times$ side fixed effects, and year-by-lawyer-attribute fixed effects. Standard errors clustered by firm and stack. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

@@ -1,0 +1,39 @@
+\begin{table}[!htbp]
+\setlength{\abovecaptionskip}{0pt}
+\centering
+\caption{Document-Level Strict Triple-Difference Estimates}
+\label{tab:document_level_strict_ddd_main}
+\begin{threeparttable}
+\begin{tabular}{lcccc}
+\toprule
+ & (1) & (2) & (3) & (4) \\
+Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary & Case Fee Win Rate \\
+\midrule
+Winner $\times$ Post & 0.001 & 0.009 & 0.003 & 0.007 \\
+ & (0.002) & (0.020) & (0.012) & (0.015) \\
+\addlinespace
+Previously Represented Gov't & -0.009$^{***}$ & -0.040$^{***}$ & 0.021$^{*}$ & 0.032$^{**}$ \\
+ & (0.001) & (0.013) & (0.011) & (0.013) \\
+\addlinespace
+Winner $\times$ Post $\times$ Previously Represented Gov't & -0.000 & -0.047$^{*}$ & -0.033$^{*}$ & -0.032 \\
+ & (0.002) & (0.027) & (0.020) & (0.023) \\
+\addlinespace
+Observations & 1,350,883 & 1,350,883 & 970,741 & 687,105 \\
+$R^2$ & 0.144 & 0.148 & 0.278 & 0.349 \\
+Case Controls & Yes & Yes & Yes & Yes \\
+Lawyer Controls & Yes & Yes & Yes & Yes \\
+Firm Fixed Effects & Yes & Yes & Yes & Yes \\
+Stack $\times$ Year Fixed Effects & Yes & Yes & Yes & Yes \\
+Court $\times$ Year Fixed Effects & Yes & Yes & Yes & Yes \\
+Cause $\times$ Side Fixed Effects & Yes & Yes & Yes & Yes \\
+Year $\times$ Gender Fixed Effects & Yes & Yes & Yes & Yes \\
+Year $\times$ Party Membership Fixed Effects & Yes & Yes & Yes & Yes \\
+Year $\times$ Education Fixed Effects & Yes & Yes & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \textit{Note:} Triple-difference (DDD) coefficients interact Winner $\times$ Post with an indicator for whether the firm previously represented the government in administrative litigation in the same court. Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation. The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance. Identification of the triple interaction comes from the rows with positive prior administrative exposure. Case controls: opposing-counsel presence and plaintiff/defendant entity status. Standardized practice years enters linearly as a lawyer control. Year-by-lawyer-attribute fixed effects for gender, party membership, and education absorb time-specific shocks within each lawyer cohort. Standard errors clustered by firm and court. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

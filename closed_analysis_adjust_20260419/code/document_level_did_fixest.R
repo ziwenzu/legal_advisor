@@ -412,13 +412,13 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste("Sample &", paste(sample_row, collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Firm Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Year Fixed Effects &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
     paste("Court $\\times$ Year Fixed Effects &", paste(c("", "", "", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Lawyer Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -426,7 +426,7 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste(
       "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status.",
+      "Case controls: opposing-side representation, plaintiff and defendant entity status.",
       "Standardized practice years enters linearly; year-by-gender, year-by-Chinese Communist Party (CCP), and year-by-education fixed effects absorb time-varying lawyer-composition effects.",
       "Standard errors clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
@@ -469,12 +469,12 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     paste("Sample &", paste(rep("Decisive cases with fee share", 2), collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Firm Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Year Fixed Effects &", paste(c("Yes", ""), collapse = " & "), "\\\\"),
     paste("Court $\\times$ Year Fixed Effects &", paste(c("", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Lawyer Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -482,7 +482,7 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     paste(
       "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status.",
+      "Case controls: opposing-side representation, plaintiff and defendant entity status.",
       "Standardized practice years enters linearly; year-by-gender, year-by-Chinese Communist Party (CCP), and year-by-education fixed effects absorb time-varying lawyer-composition effects.",
       "Standard errors clustered by firm and stack in column 1 and by firm and court in column 2.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
@@ -575,6 +575,14 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
 
   lines <- c(
     lines,
+    "\\addlinespace",
+    paste("Case Controls &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Firm Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Stack $\\times$ Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Year $\\times$ Lawyer-Attribute Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -582,7 +590,7 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
     paste(
       "\\item \\textit{Note:} Each panel reports two coefficients per outcome: the level Winner $\\times$ Post effect and the differential Winner $\\times$ Post $\\times$ Attribute.",
       "Outcomes: legal-reasoning share (col.\\ 1), log reasoning length plus one (col.\\ 2), binary win in decisive cases (col.\\ 3), fee-based win rate in decisive cases with observed fee (col.\\ 4).",
-      "All regressions include firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects; year-by-attribute fixed effects that absorb the level effect of each lawyer attribute; and case-level controls for opposing-side representation and plaintiff/defendant entity status.",
+      "All regressions include case controls for opposing-side representation and plaintiff/defendant entity status, standardized practice-years controls, firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects, and year-by-lawyer-attribute fixed effects.",
       "Standard errors clustered by firm and stack.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
