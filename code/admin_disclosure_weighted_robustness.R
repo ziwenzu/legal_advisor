@@ -6,9 +6,16 @@ suppressPackageStartupMessages({
   library(stringr)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-admin_path <- file.path(root_dir, "data", "output data", "admin_case_level.csv")
-city_path <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+admin_path <- file.path(root_dir, "data", "admin_case_level.csv")
+city_path <- file.path(root_dir, "data", "city_year_panel.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
@@ -44,8 +51,9 @@ parse_case_numbers <- function(case_no) {
 }
 
 main <- function() {
-  cases <- fread(admin_path)
+  cases <- fread(admin_path, encoding = "UTF-8")
   parsed <- parse_case_numbers(cases$case_no)
+  cat("case-number regex matched:", sum(!is.na(parsed$seq)), "/", nrow(cases), "\n")
   cases[, c("cn_year", "court_code", "procedure", "seq") := parsed]
   cases <- cases[!is.na(seq) & !is.na(court_code) & !is.na(procedure) & seq <= 50000]
 
@@ -74,8 +82,14 @@ main <- function() {
     list(key = "admin_case_n", label = "Admin.\\ Cases")
   )
 
+  preferred_controls <- function(outcome) {
+    controls <- c("log_population_10k", "log_gdp", "log_registered_lawyers")
+    if (outcome == "government_win_rate") controls <- c(controls, "log_court_caseload_n")
+    controls
+  }
+
   fit <- function(outcome_col, weighted = FALSE) {
-    rhs <- "treatment + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n"
+    rhs <- paste(c("treatment", preferred_controls(outcome_col)), collapse = " + ")
     f <- as.formula(sprintf("%s ~ %s | city_id + year", outcome_col, rhs))
     if (!weighted) {
       m <- feols(f, data = panel, cluster = ~ city_id)
@@ -137,7 +151,7 @@ main <- function() {
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Disclosure-inverse weight &", paste(weighted_yes, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -145,10 +159,10 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Note:} Outcomes match the main city-year table.",
-      "Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = (n_j+1)/n_j \\cdot m_j - 1$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}); per-case weights are clipped at 20.",
-      "The disclosure correction enters as a regression weight only; the dependent variables match the baseline columns.",
-      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "\\item \\textit{Note:} Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = \\max\\{n_j, (n_j+1)/n_j \\cdot m_j - 1\\}$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}).",
+      "Disclosure shares are floored at 0.05 before inversion and per-case weights are clipped at 20.",
+      "The sample is restricted to the 1,974 city-year cells (2014--2020) with at least one parsed administrative case.",
+      "City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

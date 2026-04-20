@@ -5,11 +5,15 @@ suppressPackageStartupMessages({
   library(fixest)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-input_file <- Sys.getenv(
-  "ADMIN_CASE_INPUT_FILE",
-  unset = file.path(root_dir, "data", "output data", "admin_case_level.csv")
-)
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+input_file <- file.path(root_dir, "data", "admin_case_level.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 figure_dir <- file.path(root_dir, "output", "figures")
 
@@ -42,21 +46,13 @@ fmt_p <- function(p_value) {
 }
 
 read_admin_panel <- function(path) {
-  if (grepl("\\.parquet$", path)) {
-    arrow_avail <- requireNamespace("arrow", quietly = TRUE)
-    if (!arrow_avail) {
-      stop("Reading parquet requires the 'arrow' package; install it or pass the CSV file via ADMIN_CASE_INPUT_FILE.")
-    }
-    dt <- as.data.table(arrow::read_parquet(path))
-  } else {
-    dt <- fread(path)
-  }
+  dt <- fread(path)
+
+  dt <- dt[!is.na(court_std) & court_std != ""]
 
   dt[, city_name := sprintf("%s_%s", province, city)]
   dt[, city_id := .GRP, by = city_name]
   dt[, court_id := .GRP, by = court_std]
-  dt[, court_year_fe := sprintf("%s__%s", court_id, year)]
-  dt[, cause_year_fe := sprintf("%s__%s", cause_group, year)]
 
   dt[, treated_city := as.integer(treated_city)]
   dt[, post := as.integer(post)]
@@ -87,6 +83,22 @@ build_formula <- function(outcome_name, extra_rhs = character(0)) {
 estimate_admin_did <- function(dt, outcome_name, extra_rhs = character(0)) {
   formula_obj <- build_formula(outcome_name, extra_rhs)
   feols(formula_obj, data = dt, cluster = ~ city_id + court_id)
+}
+
+estimate_plaintiff_equality_pvalue <- function(dt, extra_rhs = character(0)) {
+  rhs_terms <- c(
+    "did_treatment * plaintiff_is_entity",
+    extra_rhs
+  )
+  formula_obj <- as.formula(sprintf(
+    "government_win ~ %s | court_id + year + cause_group",
+    paste(rhs_terms, collapse = " + ")
+  ))
+  model <- feols(formula_obj, data = dt, cluster = ~ city_id + court_id)
+  ct <- as.data.table(coeftable(model), keep.rownames = "term")
+  row <- ct[term %in% c("did_treatment:plaintiff_is_entity", "plaintiff_is_entity:did_treatment")]
+  if (nrow(row) == 0) return(NA_real_)
+  row[["Pr(>|t|)"]][1]
 }
 
 extract_did_coef <- function(model) {
@@ -164,8 +176,6 @@ build_appendix_table <- function(results_list, file_path) {
   obs_row <- sapply(spec_keys, function(key) fmt_int(results_list[[key]]$n_obs))
   r2_row <- sapply(spec_keys, function(key) fmt_num(results_list[[key]]$r2))
 
-  gov_counsel_yes <- c("", "Yes", "Yes", "Yes")
-  gov_counsel_post_yes <- c("", "", "Yes", "Yes")
   opp_counsel_yes <- c("", "", "", "Yes")
 
   lines <- c(
@@ -183,7 +193,7 @@ build_appendix_table <- function(results_list, file_path) {
     paste("Treatment $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
-    paste("Government has counsel &",
+    paste("Government counsel (1/0) &",
           paste(sapply(gov_lvl_cells, `[`, 1), collapse = " & "), "\\\\"),
     paste("&", paste(sapply(gov_lvl_cells, `[`, 2), collapse = " & "), "\\\\"),
     paste("Government counsel $\\times$ Post &",
@@ -198,8 +208,7 @@ build_appendix_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Government counsel control &", paste(gov_counsel_yes, collapse = " & "), "\\\\"),
-    paste("Government counsel $\\times$ Post control &", paste(gov_counsel_post_yes, collapse = " & "), "\\\\"),
+    paste("Plaintiff type &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Opposing counsel &", paste(opp_counsel_yes, collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -226,7 +235,7 @@ build_appendix_table <- function(results_list, file_path) {
   writeLines(lines, con = file_path)
 }
 
-build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_n) {
+build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_n, equality_pvalues) {
   col_keys <- c(
     "entity_baseline", "entity_with_opp",
     "individual_baseline", "individual_with_opp"
@@ -255,6 +264,11 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
   r2_row <- sapply(col_keys, function(k) fmt_num(results_list[[k]]$r2))
   opp_yes <- c("", "Yes", "", "Yes")
   sample_row <- c("Entity plaintiff", "Entity plaintiff", "Individual plaintiff", "Individual plaintiff")
+  equality_row <- sprintf(
+    "Equality-test p-value & \\multicolumn{2}{c}{Cols. 1 = 3: %s} & \\multicolumn{2}{c}{Cols. 2 = 4: %s} \\\\",
+    fmt_p(equality_pvalues$baseline),
+    fmt_p(equality_pvalues$with_opp)
+  )
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -277,6 +291,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
+    equality_row,
     paste("Opposing counsel &", paste(opp_yes, collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -290,6 +305,7 @@ build_plaintiff_heterogeneity_table <- function(results_list, file_path, sample_
       sprintf("Entity-plaintiff sub-sample $N=%s$; individual-plaintiff sub-sample $N=%s$.",
               fmt_int(sample_n$entity), fmt_int(sample_n$individual)),
       "Even columns add an indicator for whether the opposing party appears with counsel.",
+      "The equality-test row reports two-sided $p$-values for equality of the procurement coefficient between entity- and individual-plaintiff cases, estimated from the corresponding pooled interaction specification.",
       "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -347,11 +363,18 @@ main <- function() {
     entity = sum(dt$plaintiff_is_entity == 1L, na.rm = TRUE),
     individual = sum(dt$plaintiff_is_entity == 0L, na.rm = TRUE)
   )
+  equality_pvalues <- list(
+    baseline = estimate_plaintiff_equality_pvalue(dt, extra_rhs = character(0)),
+    with_opp = estimate_plaintiff_equality_pvalue(dt, extra_rhs = "opponent_has_lawyer")
+  )
   build_plaintiff_heterogeneity_table(
     results_list = plaintiff_results,
     file_path = file.path(table_dir, "admin_plaintiff_heterogeneity_appendix_table.tex"),
-    sample_n = sample_n
+    sample_n = sample_n,
+    equality_pvalues = equality_pvalues
   )
 }
 
-main()
+if (sys.nframe() == 0) {
+  main()
+}

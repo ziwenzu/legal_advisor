@@ -6,8 +6,15 @@ suppressPackageStartupMessages({
   library(did)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-input_file <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+input_file <- file.path(root_dir, "data", "city_year_panel.csv")
 figure_dir <- file.path(root_dir, "output", "figures")
 table_dir <- file.path(root_dir, "output", "tables")
 
@@ -17,9 +24,9 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 NEVER_TREATED_SENTINEL <- 0
 
 EVENT_PLOT_LAYOUT <- list(
-  "Government Win Rate" = list(ann_y = 0.28, pre_y = 0.28),
-  "Appeal Rate" = list(ann_y = NULL, pre_y = -0.10),
-  "Administrative Case Numbers" = list(ann_y = 100, pre_y = -200)
+  "Government Win Rate" = list(ann_y = 0.18, pre_y = 0.18, ylim_hi = 0.20),
+  "Appeal Rate" = list(ann_y = 0.10, pre_y = 0.10),
+  "Administrative Case Numbers" = list(ann_y = 100, pre_y = 100)
 )
 
 stars <- function(p_value) {
@@ -79,14 +86,6 @@ estimate_twfe_main <- function(dt, outcome_name, extra_controls = character(0)) 
   feols(formula_obj, data = dt, cluster = ~ city_id)
 }
 
-estimate_twfe_event <- function(dt, outcome_name) {
-  rhs_terms <- c("i(rel_time, ever_treated, ref = -1)", preferred_controls(outcome_name))
-  formula_obj <- as.formula(
-    sprintf("%s ~ %s | city_id + year", outcome_name, paste(rhs_terms, collapse = " + "))
-  )
-  feols(formula_obj, data = dt, cluster = ~ city_id)
-}
-
 estimate_cs <- function(dt, outcome_name) {
   controls_formula <- as.formula(
     paste("~", paste(preferred_controls(outcome_name), collapse = " + "))
@@ -130,33 +129,6 @@ extract_twfe_coef <- function(model) {
     n_obs = nobs(model),
     r2 = fitstat(model, "r2")
   )
-}
-
-extract_twfe_event <- function(model) {
-  ip <- iplot(model, only.params = TRUE)
-  dt <- as.data.table(ip$prms)
-  setnames(
-    dt,
-    c("estimate", "ci_low", "ci_high", "estimate_names", "is_ref"),
-    c("estimate", "ci_lo", "ci_hi", "event_time", "is_ref")
-  )
-
-  dt[
-    ,
-    `:=`(
-      event_time = as.numeric(event_time),
-      estimator = "TWFE OLS"
-    )
-  ][
-    ,
-    .(
-      estimator,
-      event_time,
-      estimate,
-      ci_lo = fifelse(is_ref, 0, ci_lo),
-      ci_hi = fifelse(is_ref, 0, ci_hi)
-    )
-  ]
 }
 
 extract_cs_coef <- function(cs_obj) {
@@ -221,10 +193,6 @@ build_plot_data <- function(cs_event_dt) {
   ]
 }
 
-build_event_study_table <- function(...) {
-  invisible(NULL)
-}
-
 plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_pre_p, file_path) {
   plot_dt <- copy(plot_dt)
   plot_dt[, x_plot := event_time]
@@ -246,6 +214,9 @@ plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_
 
   ylim_lo <- min(y_range[1] - 0.05 * y_span, ann_y, pre_y) - 0.05 * y_span
   ylim_hi <- max(y_range[2] + 0.08 * y_span, ann_y, pre_y) + 0.05 * y_span
+  if (!is.null(layout) && !is.null(layout$ylim_hi)) {
+    ylim_hi <- layout$ylim_hi
+  }
 
   pdf(file = file_path, width = 7.4, height = 5.2, family = "serif")
   op <- par(
@@ -335,7 +306,7 @@ build_table_tex <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -346,7 +317,8 @@ build_table_tex <- function(results_list, file_path) {
       "\\item \\textit{Note:}",
       "Odd columns report the average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group;",
       "even columns report Treatment $\\times$ Post from a two-way fixed-effects (TWFE) regression.",
-      "Controls include log population, log GDP, log registered lawyers, and log court caseload.",
+      "All specifications control for log population, log GDP, and log registered lawyers; government-win columns additionally control for log court caseload.",
+      "CS observation counts report the estimator's effective sample and can differ from TWFE columns when cities first treated in the initial sample period are excluded.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -447,7 +419,7 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -502,20 +474,6 @@ main <- function() {
       cs_pre_p = cs_pre_p,
       file_path = file.path(figure_dir, sprintf("%s_event_study.pdf", outcome_name))
     )
-
-    build_event_study_table(
-      plot_dt = plot_dt,
-      outcome_label = outcome_specs[[outcome_name]]$label,
-      cs_att = cs_coef$estimate,
-      cs_se = cs_coef$se,
-      cs_pre_p = cs_pre_p,
-      file_path = file.path(table_dir, sprintf("%s_event_study_table.tex", outcome_name)),
-      file_label = sprintf("%s_event_study", outcome_name),
-      caption = sprintf(
-        "Event-Study Estimates Behind the City-Year %s Figure",
-        outcome_specs[[outcome_name]]$label
-      )
-    )
   }
 
   build_table_tex(
@@ -542,4 +500,6 @@ main <- function() {
   }
 }
 
-main()
+if (sys.nframe() == 0) {
+  main()
+}

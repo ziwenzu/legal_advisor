@@ -5,12 +5,16 @@ suppressPackageStartupMessages({
   library(fixest)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-input_file <- Sys.getenv(
-  "ADMIN_CASE_INPUT_FILE",
-  unset = file.path(root_dir, "data", "output data", "admin_case_level.csv")
-)
-city_file <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+input_file <- file.path(root_dir, "data", "admin_case_level.csv")
+city_file <- file.path(root_dir, "data", "city_year_panel.csv")
 figure_dir <- file.path(root_dir, "output", "figures")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
@@ -295,7 +299,7 @@ build_table <- function(results_dt, baseline_dt, case_n_dt, file_path) {
       collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_cells, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_cells, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", nrow(results_dt)), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", nrow(results_dt)), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(rep("Yes", nrow(results_dt)), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", nrow(results_dt)), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -306,7 +310,8 @@ build_table <- function(results_dt, baseline_dt, case_n_dt, file_path) {
       "\\item \\textit{Note:} Each column reports Treatment $\\times$ Post from a separate two-way fixed-effects regression on a (city $\\times$ year) panel restricted to one cause group.",
       "Outcome is the within-city-year share of administrative cases in that cause group in which the government prevailed.",
       "Pre-treatment mean is the case-weighted mean across treated cities in years strictly before procurement; Control mean is the analogous mean across never-treated cities pooled over the sample window; standard deviations in square brackets.",
-      "Cause groups: expropriation and compensation, land and planning, public security and traffic, enforcement and penalties, permitting and administrative review, labor and social security, generic administrative acts (catch-all bucket for unspecified administrative behaviour and township-level government acts), and economic and resource regulation (finance, fiscal, commerce, water, agriculture, food and drug, fire, culture, and related sectoral oversight).",
+      "Cause groups follow the project's eight administrative-litigation categories: expropriation and compensation, land and planning, public security and traffic, enforcement and penalties, permitting and review, labor and social security, generic administrative acts, and economic and resource regulation.",
+      "City-year-cause cells with no cases are not observed and therefore do not enter the regression sample.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."

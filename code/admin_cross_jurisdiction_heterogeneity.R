@@ -5,11 +5,15 @@ suppressPackageStartupMessages({
   library(fixest)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-input_file <- Sys.getenv(
-  "ADMIN_CASE_INPUT_FILE",
-  unset = file.path(root_dir, "data", "output data", "admin_case_level.csv")
-)
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+input_file <- file.path(root_dir, "data", "admin_case_level.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
@@ -40,6 +44,7 @@ fmt_p <- function(p) {
 
 read_admin_panel <- function(path) {
   dt <- fread(path)
+  dt <- dt[!is.na(court_std) & court_std != ""]
   dt[, city_name := sprintf("%s_%s", province, city)]
   dt[, city_id := .GRP, by = city_name]
   dt[, court_id := .GRP, by = court_std]
@@ -139,8 +144,8 @@ build_table <- function(results_list, file_path) {
     paste("Pre-treatment government win rate &", paste(pre_cells, collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_cells, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_cells, collapse = " & "), "\\\\"),
-    paste("Plaintiff entity (case-level) &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
-    paste("Opposing counsel (case-level) &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Plaintiff entity &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
+    paste("Opposing counsel &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Cause-Group Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
@@ -152,7 +157,7 @@ build_table <- function(results_list, file_path) {
       "\\item \\textit{Note:} Linear-probability coefficients on Treatment $\\times$ Post with the government-win indicator as the outcome, estimated on the indicated case sub-sample.",
       "Columns 1--2 split by court level: basic-level (district) people's courts versus intermediate, high, or specialized courts; the latter serve as a proxy for the cross-region adjudication arrangement of Liu, Wang, and Lyu (2023, \\textit{Journal of Public Economics}).",
       "Columns 3--4 split by whether the plaintiff is local to the defendant city.",
-      "The Coefficient equality test reports the two-sided $p$-value for $H_0$: column 1 coefficient = column 2 coefficient (and analogously for columns 3 vs 4) using the $z$-statistic with stack-clustered standard errors and treating the two sub-samples as independent.",
+      "The Coefficient equality test reports the two-sided $p$-value for $H_0$: column 1 coefficient = column 2 coefficient (and analogously for columns 3 vs 4) using the $z$-statistic computed from city- and court-clustered standard errors, treating the two sub-samples as independent and ignoring any residual within-city dependence across the split samples.",
       "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

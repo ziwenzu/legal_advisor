@@ -4,10 +4,17 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-city_path <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
-admin_path <- file.path(root_dir, "data", "output data", "admin_case_level.csv")
-firm_path <- file.path(root_dir, "data", "output data", "firm_level.csv")
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+city_path <- file.path(root_dir, "data", "city_year_panel.csv")
+admin_path <- file.path(root_dir, "data", "admin_case_level.csv")
+firm_path <- file.path(root_dir, "data", "firm_level.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 figure_dir <- file.path(root_dir, "output", "figures")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
@@ -41,11 +48,12 @@ write_summary_table <- function(file_path) {
   admin <- fread(admin_path)
   firm <- fread(firm_path)
 
-  doc_path <- file.path(root_dir, "data", "output data", "document_level_winner_vs_loser_clean.csv")
+  doc_path <- file.path(root_dir, "data", "document_level_winner_vs_loser.csv")
   doc <- fread(doc_path,
                select = c("treated_firm","post","did_treatment","case_decisive","case_win_binary",
                           "opponent_has_lawyer","plaintiff_party_is_entity","defendant_party_is_entity",
-                          "case_win_rate_fee","log_legal_reasoning_length_chars","legal_reasoning_share"))
+                          "case_win_rate_fee","log_legal_reasoning_length_chars","legal_reasoning_share",
+                          "lawyer_gender","lawyer_edu"))
 
   panel_a <- c(
     stat_row("Government win rate", city$government_win_rate),
@@ -64,7 +72,7 @@ write_summary_table <- function(file_path) {
     stat_row("Government win", admin$government_win),
     stat_row("Appealed", admin$appealed),
     stat_row("Petitioned", admin$petitioned),
-    stat_row("Government has counsel", admin$government_has_lawyer),
+    stat_row("Government counsel (1/0)", admin$government_has_lawyer),
     stat_row("Opposing party has counsel", admin$opponent_has_lawyer),
     stat_row("Plaintiff is entity", admin$plaintiff_is_entity),
     stat_row("Non-local plaintiff", admin$non_local_plaintiff),
@@ -83,7 +91,9 @@ write_summary_table <- function(file_path) {
     stat_row("Defendant party entity", doc$defendant_party_is_entity),
     stat_row("Fee-based win rate", doc$case_win_rate_fee),
     stat_row("Legal reasoning share", doc$legal_reasoning_share),
-    stat_row("Log reasoning length", doc$log_legal_reasoning_length_chars)
+    stat_row("Log reasoning length", doc$log_legal_reasoning_length_chars),
+    stat_row("Lawyer female indicator", doc$lawyer_gender),
+    stat_row("Lawyer education code", doc$lawyer_edu)
   )
 
   panel_d <- c(
@@ -125,6 +135,8 @@ write_summary_table <- function(file_path) {
     paste(
       "\\item \\textit{Note:} Panel A is the city-year administrative panel; Panel B the administrative case-level panel; Panel C the civil case-level (document-level) panel; Panel D the firm-year stacked panel of procurement winners and matched runner-up firms.",
       "Each row's $N$ counts cells with a non-missing value for that variable.",
+      "Panel A spans 2013--2020, with 2013 retained as a pre-period for the city-year staggered estimator; the other panels use their native analysis windows.",
+      "In Panel C, Lawyer female indicator is coded 1 for female and 0 for male; Lawyer education code is coded 1 = others, 2 = associate, 3 = college, 4 = master, 5 = PhD.",
       "Variables pooled over the sample window."
     ),
     "\\end{tablenotes}",

@@ -5,9 +5,16 @@ suppressPackageStartupMessages({
   library(fixest)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-admin_path <- file.path(root_dir, "data", "output data", "admin_case_level.csv")
-city_path <- file.path(root_dir, "data", "output data", "city_year_panel.csv")
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+admin_path <- file.path(root_dir, "data", "admin_case_level.csv")
+city_path <- file.path(root_dir, "data", "city_year_panel.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
@@ -100,7 +107,6 @@ main <- function() {
 
   estimate_sunab <- function(outcome) {
     panel_sa <- copy(panel)
-    panel_sa[ever_treated == 0L, first_treat_year := 10000L]
     f <- as.formula(sprintf(
       "%s ~ sunab(first_treat_year, year) + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n | city_id + year",
       outcome
@@ -158,7 +164,7 @@ main <- function() {
     "\\footnotesize",
     paste(
       "\\item \\textit{Note:} Panel A outcomes are the within-city-year share of cases that are withdrawn (row 1) or that end without a judgment on the merits (row 2).",
-      "Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the residual category that is omitted to avoid collinearity.",
+      "Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the omitted residual categories administrative acts and economic and resource regulation.",
       "Panel C re-estimates the three headline outcomes with the Sun and Abraham (2021) interaction-weighted estimator.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
       "Standard errors clustered by city.",

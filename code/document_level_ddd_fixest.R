@@ -5,11 +5,15 @@ suppressPackageStartupMessages({
   library(fixest)
 })
 
-root_dir <- "/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor"
-input_file <- Sys.getenv(
-  "DOCUMENT_DDD_INPUT_FILE",
-  unset = file.path(root_dir, "data", "output data", "document_level_winner_vs_loser_ddd.csv")
-)
+get_root_dir <- function() {
+  script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (!length(script_arg)) return(normalizePath(getwd()))
+  script_path <- normalizePath(sub("^--file=", "", script_arg[1]))
+  normalizePath(file.path(dirname(script_path), ".."))
+}
+
+root_dir <- get_root_dir()
+input_file <- file.path(root_dir, "data", "document_level_winner_vs_loser.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 output_tag <- Sys.getenv("DOCUMENT_DDD_OUTPUT_TAG", unset = "")
 
@@ -71,21 +75,30 @@ read_document_panel <- function(path) {
   dt[, prior_admin_gov_exposure := as.integer(prior_admin_gov_exposure)]
   dt[, has_pre_admin_civil_case_in_court := as.integer(has_pre_admin_civil_case_in_court)]
 
-  dt[, exposed_pair_has_pre_civil_support := as.integer(
+  dt[, ddd_support_row := as.integer(
     prior_admin_gov_exposure == 0L | has_pre_admin_civil_case_in_court == 1L
   )]
+  dt[, treated_by_prior := treated_firm * prior_admin_gov_exposure]
+  dt[, post_by_prior := post * prior_admin_gov_exposure]
   dt[, ddd_binary := did_treatment * prior_admin_gov_exposure]
 
-  dt[, lawyer_female := fifelse(lawyer_gender == "女", 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_gender := as.integer(lawyer_gender)]
+  dt[, lawyer_edu := as.integer(lawyer_edu)]
+
+  dt[, lawyer_female := as.integer(lawyer_gender == 1L)]
   dt[, lawyer_ccp_bin := fifelse(lawyer_ccp == 1, 1L, 0L, na = NA_integer_)]
-  dt[, lawyer_high_edu := fifelse(lawyer_edu %chin% c("master", "PhD"), 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_high_edu := as.integer(lawyer_edu >= 4L)]
   dt[, lawyer_gender_group := fifelse(is.na(lawyer_female), "unknown", fifelse(lawyer_female == 1L, "female", "male"))]
   dt[, lawyer_ccp_group := fifelse(is.na(lawyer_ccp_bin), "unknown", fifelse(lawyer_ccp_bin == 1L, "ccp", "nonccp"))]
   dt[, lawyer_edu_group := fifelse(is.na(lawyer_high_edu), "unknown", fifelse(lawyer_high_edu == 1L, "highedu", "baselineedu"))]
+  if (!any(dt$lawyer_female == 1L, na.rm = TRUE)) {
+    stop("lawyer_female contains no female observations after UTF-8 decoding")
+  }
 
   practice_mean <- mean(dt$lawyer_practice_years, na.rm = TRUE)
   practice_sd <- sd(dt$lawyer_practice_years, na.rm = TRUE)
   dt[, lawyer_practice_years_std := (lawyer_practice_years - practice_mean) / practice_sd]
+  dt[, lawyer_practice_years_obs := as.integer(!is.na(lawyer_practice_years))]
   dt[is.na(lawyer_practice_years_std), lawyer_practice_years_std := 0]
 
   dt[, year_gender_fe := sprintf("%s__%s", year, lawyer_gender_group)]
@@ -101,6 +114,7 @@ control_rhs <- paste(
   "plaintiff_party_is_entity",
   "defendant_party_is_entity",
   "lawyer_practice_years_std",
+  "lawyer_practice_years_obs",
   sep = " + "
 )
 
@@ -108,6 +122,8 @@ build_formula <- function(outcome_name) {
   rhs_terms <- paste(
     "did_treatment",
     "prior_admin_gov_exposure",
+    "treated_by_prior",
+    "post_by_prior",
     "ddd_binary",
     control_rhs,
     sep = " + "
@@ -127,9 +143,9 @@ build_formula <- function(outcome_name) {
 
 build_sample_filter <- function(base_filter = NULL) {
   if (is.null(base_filter)) {
-    quote(exposed_pair_has_pre_civil_support == 1L)
+    quote(ddd_support_row == 1L)
   } else {
-    bquote((.(base_filter)) & exposed_pair_has_pre_civil_support == 1L)
+    bquote((.(base_filter)) & ddd_support_row == 1L)
   }
 }
 
@@ -299,11 +315,12 @@ write_latex_table <- function(results) {
     "\\addlinespace",
     paste0("Observations & ", paste(n_cells, collapse = " & "), " \\\\"),
     paste0("$R^2$ & ", paste(r2_cells, collapse = " & "), " \\\\"),
+    paste("Case Controls &", yes_row, "\\\\"),
+    paste("Lawyer Controls &", yes_row, "\\\\"),
     paste("Firm Fixed Effects &", yes_row, "\\\\"),
     paste("Stack $\\times$ Year Fixed Effects &", yes_row, "\\\\"),
     paste("Court $\\times$ Year Fixed Effects &", yes_row, "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", yes_row, "\\\\"),
-    paste("Controls (case-level) &", yes_row, "\\\\"),
     paste("Year $\\times$ Gender Fixed Effects &", yes_row, "\\\\"),
     paste("Year $\\times$ Party Membership Fixed Effects &", yes_row, "\\\\"),
     paste("Year $\\times$ Education Fixed Effects &", yes_row, "\\\\"),
@@ -312,11 +329,12 @@ write_latex_table <- function(results) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Note:} Triple-difference (DDD) coefficients interact Winner $\\times$ Post with an indicator for whether the firm previously represented the government in administrative litigation in the same court.",
+      "\\item \\textit{Note:} Triple-difference (DDD) coefficients on the interaction Winner $\\times$ Post $\\times$ Previously Represented Gov't.",
+      "All two-way interactions among Winner, Post, and the prior-exposure indicator enter the regression; Winner and Post main effects are absorbed by firm and stack-by-year fixed effects.",
       "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation.",
-      "The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance.",
-      "Identification of the triple interaction comes from the rows with positive prior administrative exposure.",
-      "Case controls: opposing-counsel presence and plaintiff/defendant entity status.",
+      "The sample retains firm-court-case rows where the firm either has no prior government-side administrative appearance in that court or already handled civil cases there before any such appearance, so identification of the triple interaction comes from variation in prior administrative exposure within stack-by-year and court-by-year cells.",
+      "Case controls: opposing-counsel presence and plaintiff/defendant entity status. Lawyer controls: standardized practice years and a missing-practice-years indicator.",
+      "Year-by-gender, year-by-party-membership, and year-by-education fixed effects absorb time-varying lawyer-composition shocks.",
       "Standard errors clustered by firm and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
