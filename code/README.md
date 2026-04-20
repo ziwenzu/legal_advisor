@@ -3,11 +3,10 @@
 This directory holds the analysis-only R scripts. Each script reads
 the analysis CSVs in `../data/` and writes its `.tex` tables to
 `../output/tables/` and its `.pdf` figures to `../output/figures/`.
-Calibrated-version outputs (`../output2/`) are produced by running the
-same scripts under a temporary root directory whose `data` symlinks
-to `../data/data2` and whose `output` symlinks to `../output2`; do
-not overwrite the baseline `data/` or `output/` directories unless
-the calibrated version is to be promoted to the sole main version.
+Each script resolves the project root via `get_root_dir()` (the
+parent of the script's own directory), so the scripts can be invoked
+directly from the project root with `Rscript code/<script>.R` and
+no path symlinks or temporary roots are required.
 
 The package contains **32 R scripts** organised into three tiers:
 
