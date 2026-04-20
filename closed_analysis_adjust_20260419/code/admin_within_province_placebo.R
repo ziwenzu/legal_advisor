@@ -39,6 +39,12 @@ fmt_int <- function(x) {
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
+preferred_controls <- function(outcome) {
+  controls <- c("log_population_10k", "log_gdp", "log_registered_lawyers")
+  if (outcome == "government_win_rate") controls <- c(controls, "log_court_caseload_n")
+  controls
+}
+
 read_panel <- function() {
   city <- fread(city_path)
   city[, city_id := .GRP, by = .(province, city)]
@@ -49,17 +55,7 @@ read_panel <- function() {
     first_treat_year := if (any(treatment == 1L)) min(as.numeric(year[treatment == 1L])) else NEVER_TREATED_SENTINEL,
     by = city_id
   ]
-  city[, first_treat_year := as.numeric(first_treat_year)]
-  setorder(city, city_id, year)
   city[]
-}
-
-preferred_controls <- function(outcome) {
-  controls <- c("log_population_10k", "log_gdp", "log_registered_lawyers")
-  if (outcome == "government_win_rate") {
-    controls <- c(controls, "log_court_caseload_n")
-  }
-  controls
 }
 
 estimate_twfe <- function(panel, outcome, fe_terms = "city_id + year") {
@@ -68,20 +64,13 @@ estimate_twfe <- function(panel, outcome, fe_terms = "city_id + year") {
   m <- feols(f, data = panel, cluster = ~ city_id)
   ct <- as.data.table(coeftable(m), keep.rownames = "term")
   row <- ct[term == "treatment"]
-  list(
-    estimator = "TWFE",
-    estimate = row[["Estimate"]],
-    se = row[["Std. Error"]],
-    p_value = row[["Pr(>|t|)"]],
-    n_obs = nobs(m),
-    r2 = fitstat(m, "r2")[[1]]
-  )
+  list(estimate = row[["Estimate"]], se = row[["Std. Error"]],
+       p_value = row[["Pr(>|t|)"]], n_obs = nobs(m), r2 = fitstat(m, "r2")[[1]])
 }
 
 estimate_cs <- function(panel, outcome) {
   controls_formula <- as.formula(paste("~", paste(preferred_controls(outcome), collapse = " + ")))
-  cs_dt <- as.data.frame(copy(panel))
-
+  cs_dt <- as.data.frame(panel)
   att_gt_obj <- att_gt(
     yname = outcome,
     tname = "year",
@@ -101,36 +90,17 @@ estimate_cs <- function(panel, outcome) {
     base_period = "varying",
     print_details = FALSE
   )
-  agg <- aggte(att_gt_obj, type = "simple")
-  effective_n <- tryCatch(nrow(att_gt_obj$DIDparams$data), error = function(e) NA_integer_)
+  overall <- aggte(att_gt_obj, type = "simple")
   list(
-    estimator = "CS",
-    estimate = agg$overall.att,
-    se = agg$overall.se,
-    p_value = 2 * pnorm(abs(agg$overall.att / agg$overall.se), lower.tail = FALSE),
-    n_obs = effective_n,
-    r2 = NA_real_
-  )
-}
-
-count_cities <- function(panel) {
-  meta <- unique(panel[, .(city_id, ever_treated)])
-  list(
-    treated = sum(meta$ever_treated == 1L),
-    never_treated = sum(meta$ever_treated == 0L)
-  )
-}
-
-cells_with_paren <- function(res) {
-  c(
-    paste0(fmt_num(res$estimate), stars(res$p_value)),
-    paste0("(", fmt_num(res$se), ")")
+    estimate = overall$overall.att,
+    se = overall$overall.se,
+    p_value = 2 * pnorm(abs(overall$overall.att / overall$overall.se), lower.tail = FALSE),
+    n_obs = nrow(cs_dt)
   )
 }
 
 main <- function() {
   panel <- read_panel()
-
   province_support <- unique(panel[, .(province, city_id, ever_treated)])
   province_support <- province_support[
     ,
@@ -140,91 +110,63 @@ main <- function() {
     ),
     by = province
   ]
-  support_provinces <- province_support[has_treated_city == TRUE & has_never_treated_city == TRUE, province]
+  support_provinces <- province_support[
+    has_treated_city == TRUE & has_never_treated_city == TRUE,
+    province
+  ]
   in_province <- panel[province %in% support_provinces]
 
+  full_treated <- length(unique(panel[ever_treated == 1L, city_id]))
+  full_control <- length(unique(panel[ever_treated == 0L, city_id]))
+  ip_treated <- length(unique(in_province[ever_treated == 1L, city_id]))
+  ip_control <- length(unique(in_province[ever_treated == 0L, city_id]))
+
   outcomes <- list(
-    list(key = "government_win_rate", label = "Gov.\\ Win Rate"),
-    list(key = "appeal_rate", label = "Appeal Rate"),
-    list(key = "admin_case_n", label = "Admin.\\ Cases")
+    list(label = "Gov.\\ Win Rate", key = "government_win_rate"),
+    list(label = "Appeal Rate", key = "appeal_rate"),
+    list(label = "Admin.\\ Cases", key = "admin_case_n")
   )
 
-  twfe_rows <- vector("list", length(outcomes))
-  cs_rows <- vector("list", length(outcomes))
-  for (i in seq_along(outcomes)) {
-    spec <- outcomes[[i]]
-    twfe_rows[[i]] <- list(
-      label = spec$label,
-      headline = estimate_twfe(panel, spec$key, fe_terms = "city_id + year"),
-      sample = estimate_twfe(in_province, spec$key, fe_terms = "city_id + year"),
-      pyear = estimate_twfe(in_province, spec$key, fe_terms = "city_id + province_id^year")
+  twfe_rows <- character(0)
+  cs_rows <- character(0)
+  for (spec in outcomes) {
+    h_twfe <- estimate_twfe(panel, spec$key, fe_terms = "city_id + year")
+    s_twfe <- estimate_twfe(in_province, spec$key, fe_terms = "city_id + year")
+    p_twfe <- estimate_twfe(in_province, spec$key, fe_terms = "city_id + province_id^year")
+    twfe_rows <- c(
+      twfe_rows,
+      paste(
+        spec$label, "&",
+        paste0(fmt_num(h_twfe$estimate), stars(h_twfe$p_value)), "&",
+        paste0("(", fmt_num(h_twfe$se), ")"), "&",
+        paste0(fmt_num(s_twfe$estimate), stars(s_twfe$p_value)), "&",
+        paste0("(", fmt_num(s_twfe$se), ")"), "&",
+        paste0(fmt_num(p_twfe$estimate), stars(p_twfe$p_value)), "&",
+        paste0("(", fmt_num(p_twfe$se), ")"),
+        "\\\\"
+      )
     )
-    cs_rows[[i]] <- list(
-      label = spec$label,
-      headline = estimate_cs(panel, spec$key),
-      sample = estimate_cs(in_province, spec$key)
+    h_cs <- estimate_cs(panel, spec$key)
+    s_cs <- estimate_cs(in_province, spec$key)
+    cs_rows <- c(
+      cs_rows,
+      paste(
+        spec$label, "&",
+        paste0(fmt_num(h_cs$estimate), stars(h_cs$p_value)), "&",
+        paste0("(", fmt_num(h_cs$se), ")"), "&",
+        paste0(fmt_num(s_cs$estimate), stars(s_cs$p_value)), "&",
+        paste0("(", fmt_num(s_cs$se), ")"),
+        "& -- & -- \\\\"
+      )
     )
   }
 
-  twfe_obs_headline <- unique(vapply(twfe_rows, function(r) r$headline$n_obs, numeric(1)))
-  twfe_obs_sample <- unique(vapply(twfe_rows, function(r) r$sample$n_obs, numeric(1)))
-  twfe_obs_pyear <- unique(vapply(twfe_rows, function(r) r$pyear$n_obs, numeric(1)))
-  cs_obs_headline <- unique(vapply(cs_rows, function(r) r$headline$n_obs, numeric(1)))
-  cs_obs_sample <- unique(vapply(cs_rows, function(r) r$sample$n_obs, numeric(1)))
-  if (length(twfe_obs_headline) != 1L || length(twfe_obs_sample) != 1L || length(twfe_obs_pyear) != 1L ||
-      length(cs_obs_headline) != 1L || length(cs_obs_sample) != 1L) {
-    stop("Outcome-specific observation counts differ in admin_within_province_placebo.R")
-  }
-
-  cities_full <- count_cities(panel)
-  cities_in_prov <- count_cities(in_province)
-  cities_cell <- function(cnt) sprintf("%d / %d", cnt$treated, cnt$never_treated)
-
-  twfe_body <- vapply(twfe_rows, function(r) {
-    h <- cells_with_paren(r$headline)
-    s <- cells_with_paren(r$sample)
-    p <- cells_with_paren(r$pyear)
-    paste(
-      r$label, "&",
-      h[1], "&", h[2], "&",
-      s[1], "&", s[2], "&",
-      p[1], "&", p[2],
-      "\\\\"
-    )
-  }, character(1))
-
-  cs_body <- vapply(cs_rows, function(r) {
-    h <- cells_with_paren(r$headline)
-    s <- cells_with_paren(r$sample)
-    paste(
-      r$label, "&",
-      h[1], "&", h[2], "&",
-      s[1], "&", s[2], "&",
-      "--", "&", "--",
-      "\\\\"
-    )
-  }, character(1))
-
-  twfe_obs_row <- paste0(
-    "Observations & \\multicolumn{2}{c}{", fmt_int(twfe_obs_headline), "}",
-    " & \\multicolumn{2}{c}{", fmt_int(twfe_obs_sample), "}",
-    " & \\multicolumn{2}{c}{", fmt_int(twfe_obs_pyear), "} \\\\"
-  )
-  twfe_cities_row <- paste0(
-    "Cities (treated / never-treated) & \\multicolumn{2}{c}{", cities_cell(cities_full), "}",
-    " & \\multicolumn{2}{c}{", cities_cell(cities_in_prov), "}",
-    " & \\multicolumn{2}{c}{", cities_cell(cities_in_prov), "} \\\\"
-  )
-  cs_obs_row <- paste0(
-    "Observations & \\multicolumn{2}{c}{", fmt_int(cs_obs_headline), "}",
-    " & \\multicolumn{2}{c}{", fmt_int(cs_obs_sample), "}",
-    " & \\multicolumn{2}{c}{--} \\\\"
-  )
-  cs_cities_row <- paste0(
-    "Cities (treated / never-treated) & \\multicolumn{2}{c}{", cities_cell(cities_full), "}",
-    " & \\multicolumn{2}{c}{", cities_cell(cities_in_prov), "}",
-    " & \\multicolumn{2}{c}{--} \\\\"
-  )
+  twfe_obs_h <- nobs(feols(government_win_rate ~ treatment + log_population_10k + log_gdp +
+                             log_registered_lawyers + log_court_caseload_n | city_id + year,
+                           data = panel, cluster = ~ city_id))
+  twfe_obs_s <- nobs(feols(government_win_rate ~ treatment + log_population_10k + log_gdp +
+                             log_registered_lawyers + log_court_caseload_n | city_id + year,
+                           data = in_province, cluster = ~ city_id))
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -241,30 +183,39 @@ main <- function() {
     "\\midrule",
     "\\multicolumn{7}{l}{\\textit{Panel A. Two-way fixed effects (TWFE)}} \\\\",
     "\\addlinespace",
-    twfe_body,
+    twfe_rows,
     "\\addlinespace",
-    twfe_obs_row,
-    twfe_cities_row,
+    paste0("Observations & \\multicolumn{2}{c}{", fmt_int(twfe_obs_h),
+           "} & \\multicolumn{2}{c}{", fmt_int(twfe_obs_s),
+           "} & \\multicolumn{2}{c}{", fmt_int(twfe_obs_s), "} \\\\"),
+    paste0("Cities (treated / never-treated) & \\multicolumn{2}{c}{",
+           full_treated, " / ", full_control,
+           "} & \\multicolumn{2}{c}{",
+           ip_treated, " / ", ip_control,
+           "} & \\multicolumn{2}{c}{",
+           ip_treated, " / ", ip_control, "} \\\\"),
     "\\midrule",
     "\\multicolumn{7}{l}{\\textit{Panel B. Callaway and Sant'Anna (CS) staggered estimator}} \\\\",
     "\\addlinespace",
-    cs_body,
+    cs_rows,
     "\\addlinespace",
-    cs_obs_row,
-    cs_cities_row,
+    paste0("Observations & \\multicolumn{2}{c}{", fmt_int(nrow(panel)),
+           "} & \\multicolumn{2}{c}{", fmt_int(nrow(in_province)),
+           "} & \\multicolumn{2}{c}{--} \\\\"),
+    paste0("Cities (treated / never-treated) & \\multicolumn{2}{c}{",
+           full_treated, " / ", full_control,
+           "} & \\multicolumn{2}{c}{",
+           ip_treated, " / ", ip_control,
+           "} & \\multicolumn{2}{c}{--} \\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
       "\\item \\textit{Note:} Each cell reports the city-year procurement effect on one outcome.",
-      "Panel A reports Treatment $\\times$ Post from two-way fixed-effects regressions; Panel B reports the overall average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group.",
-      "Headline columns reproduce the main city-year specification on all sample cities.",
-      "Same-province sample columns restrict the sample to provinces that contain both at least one procurement-adopting city and at least one never-treated city, so that the donor pool is supported within province; the TWFE specification keeps city and year fixed effects.",
-      "+ Province $\\times$ Year FE columns add province-by-year fixed effects to the same support-restricted sample, identifying the procurement effect from within-province-year variation; this column is not applicable to the CS estimator and is reported as ``--''.",
-      "The CS coefficients on government win rate, appeal rate, and administrative-case volume are essentially unchanged when the sample is restricted to within-province donor pools, indicating that the staggered-DiD findings are not driven by cross-province comparisons.",
-      "Under the tighter within-province identification, the TWFE point estimate for administrative-case volume grows in magnitude and gains precision, suggesting that the headline TWFE understates the contraction.",
-      "City-year controls: log population, log GDP, log registered lawyers, and log court caseload (the last enters only for the government-win-rate specification, matching the main city-year table).",
+      "Panel A reports Treatment $\\times$ Post from two-way fixed-effects regressions; Panel B reports the overall ATT from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group.",
+      "Headline columns reproduce the main city-year specification on all sample cities; Same-province sample columns restrict the sample to provinces that contain both at least one procurement-adopting city and at least one never-treated city; + Province $\\times$ Year FE columns add province-by-year fixed effects to that sub-sample (not applicable to the CS estimator and reported as ``--'').",
+      "City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification.",
       "Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS).",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

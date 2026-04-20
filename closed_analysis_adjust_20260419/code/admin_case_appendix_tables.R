@@ -13,7 +13,6 @@ get_root_dir <- function() {
 }
 
 root_dir <- get_root_dir()
-admin_file <- file.path(root_dir, "data", "admin_case_level.csv")
 city_file <- file.path(root_dir, "data", "city_year_panel.csv")
 firm_file <- file.path(root_dir, "data", "firm_level.csv")
 table_dir <- file.path(root_dir, "output", "tables")

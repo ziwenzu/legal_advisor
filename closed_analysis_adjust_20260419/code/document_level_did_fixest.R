@@ -107,6 +107,7 @@ control_rhs <- paste(
   "plaintiff_party_is_entity",
   "defendant_party_is_entity",
   "lawyer_practice_years_std",
+  "lawyer_practice_years_obs",
   sep = " + "
 )
 
@@ -309,11 +310,12 @@ plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_
     pre_y <- -0.04
   }
   if (outcome_name == "log_legal_reasoning_length_chars") {
-    ann_y <- -0.1
-    pre_y <- -0.1
+    ann_y <- 0.20
+    pre_y <- 0.20
   }
   if (outcome_name == "legal_reasoning_share") {
-    pre_y <- -0.01
+    ann_y <- 0.02
+    pre_y <- 0.02
   }
   if (outcome_name == "case_win_rate_fee") {
     ann_y <- 0.20
@@ -590,7 +592,8 @@ build_attribute_table <- function(results_list, fee_results_list, file_path) {
     paste(
       "\\item \\textit{Note:} Each panel reports two coefficients per outcome: the level Winner $\\times$ Post effect and the differential Winner $\\times$ Post $\\times$ Attribute.",
       "Outcomes: legal-reasoning share (col.\\ 1), log reasoning length plus one (col.\\ 2), binary win in decisive cases (col.\\ 3), fee-based win rate in decisive cases with observed fee (col.\\ 4).",
-      "All regressions include case controls for opposing-side representation and plaintiff/defendant entity status, standardized practice-years controls, firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects, and year-by-lawyer-attribute fixed effects.",
+      "Panels A and C are estimated on the subset of documents with non-missing party-membership or practice-years information; gender and master-or-above indicators are observed for every document, so Panels B and D use the full document sample.",
+      "All regressions include case controls for opposing-side representation and plaintiff/defendant entity status, standardized practice-years controls with a missing-practice-years indicator, firm, stack $\\times$ year, court, and cause $\\times$ side fixed effects, and year-by-lawyer-attribute fixed effects.",
       "Standard errors clustered by firm and stack.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

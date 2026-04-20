@@ -92,8 +92,8 @@ write_summary_table <- function(file_path) {
     stat_row("Fee-based win rate", doc$case_win_rate_fee),
     stat_row("Legal reasoning share", doc$legal_reasoning_share),
     stat_row("Log reasoning length", doc$log_legal_reasoning_length_chars),
-    stat_row("Lawyer female indicator", doc$lawyer_gender, digits = 0),
-    stat_row("Lawyer education code", doc$lawyer_edu, digits = 0)
+    stat_row("Lawyer female indicator", doc$lawyer_gender),
+    stat_row("Lawyer education code", doc$lawyer_edu)
   )
 
   panel_d <- c(

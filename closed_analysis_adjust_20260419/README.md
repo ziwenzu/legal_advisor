@@ -199,7 +199,7 @@ DGP 和调参代码保存在外部目录：
 - `did_treatment = treated_firm × post` 在基准版和校准版中都严格成立。
 - 在校准版中，`stack_id` 表示一次城市采购招标；每个 stack 只有一个 winner firm，并配有 3-10 个 loser firms。
 - 文书级校准版只保留这些 tender participants 对应的民事案件，但选择 losers 时优先选择有更多 civil documents 的本地或本省律所；当前校准版保留 1,351,683 条文书，占基准文书样本的 73.9%。
-- 每个 stack 的每个 participant 都至少有一条民事文书；同一 stack 内 winner 的 civil document 数严格高于每个 loser。
+- 每个 stack 的每个 participant 都至少有一条民事文书。`winner_firm` 的含义是该次 tender 的中标顾问律所，不要求它一定是同一 stack 中文书数量最多的律所；loser firms 可以有更多 civil documents。
 - `lawyer_gender` 已简化为数值变量，`1 = female`, `0 = male`，无缺失。
 - `lawyer_edu` 已简化为数值变量，`1 = others`, `2 = associate`, `3 = college`, `4 = master`, `5 = PhD`，无缺失。
 - 当前文件把原 DID 文书数据和 DDD 所需字段合并在同一个 CSV 中，因此不再保留两份重复的 document-level 文件。
@@ -226,12 +226,18 @@ DGP 和调参代码保存在外部目录：
 
 核心变量：
 
-- 处理与时点：`treated_firm`, `event_year`, `event_time`, `did_treatment`
+- 处理与时点：`treated_firm`（0/1），`event_year`，`event_time`，`did_treatment`
 - 主要结果：`civil_win_rate_mean`, `avg_filing_to_hearing_days`, `civil_win_rate_fee_mean`
 - 计数变量：`civil_case_n`, `civil_win_n_binary`, `civil_decisive_case_n`, `civil_fee_decisive_case_n`
 - 客户结构：`enterprise_case_n`, `personal_case_n`
 - 规模：`firm_size`
-- 律所和 stack：`stack_id`, `firm_id`, `law_firm`, `winner_firm`, `control_firm`
+- 律所与 stack 标识：`stack_id`, `firm_id`, `law_firm`, `winner_firm`, `control_firm`
+
+`winner_firm` 字段说明：
+
+- `winner_firm` 是 stack 级别的字符串标识，存储该 stack 中标顾问律所的中文名，并在该 stack 的所有行（每个 participant × 每个年份）中重复。它**不是** 0/1 二元指示。
+- firm-level 的 0/1 治疗指示变量是 `treated_firm`（中标=1，loser=0）；其互补量是 `control_firm = 1 - treated_firm`。
+- 任何把 `winner_firm` 当作 binary 使用的脚本都会出错；应统一用 `treated_firm` / `control_firm`。
 
 重要说明：
 
@@ -263,7 +269,7 @@ DGP 和调参代码保存在外部目录：
 | 版本 | city-year cells | admin cells | 最大绝对差 |
 |---|---:|---:|---:|
 | 基准版 | 1,974 | 1,974 | `5.329e-15` |
-| 校准版 | 1,974 | 1,974 | `4.707e-14` |
+| 校准版 | 1,974 | 1,974 | `5.329e-15` |
 
 这些误差只是浮点精度误差。`2013` 不参与这一等价检查，因为 admin case 文件从 2014 年开始。
 
@@ -284,7 +290,7 @@ DGP 和调参代码保存在外部目录：
 
 - `sum(firm_level.civil_case_n) = 1,351,683 = nrow(document_level_winner_vs_loser)`
 - `sum(firm_level.civil_decisive_case_n) = 971,341 = sum(document_level.case_decisive)`
-- `sum(firm_level.civil_win_n_binary) = 561,495`
+- `sum(firm_level.civil_win_n_binary) = 572,588`
 - `sum(firm_level.civil_fee_decisive_case_n) = 687,599`
 - `enterprise_case_n + personal_case_n = civil_case_n`
 - 若 `civil_decisive_case_n > 0`，则 `civil_win_rate_mean = civil_win_n_binary / civil_decisive_case_n`
@@ -353,7 +359,7 @@ DDD 的识别变异来自同一法院中已有 prior administrative-government e
 - 每个 stack 恰好 1 个 winner，且同一 `city × event_year` 没有多个 winner。
 - loser 数量范围为 3-10；当前分布为 87 个 stacks 有 3 个 losers，88 个 stacks 有 6 个 losers，91 个 stacks 有 10 个 losers。
 - 每个 stack participant 都有民事文书；当前 1,965 个 participants 中没有 zero-document firm。
-- 同一 stack 内 winner 的 civil document 数严格高于每个 loser；当前 winner-vs-loser document-count violations 为 0。
+- `winner_firm` 表示该次 procurement tender 的中标顾问律所，不表示该 stack 中民事文书数量最多的律所；loser firms 可以有更多民事文书。当前选择规则只要求每个 participant 都有民事文书，且优先保留文书数较充足的本地或本省 competitors。
 - firm-level 的所有 217 个 contractor cities 都能在 `city_year_panel.csv` 中找到对应 `province × city`。
 
 因为校准版把 stack 明确改为 tender-level，firm-level 估计应解释为 procurement-tender stacked DID：同一 stack 内比较一个中标顾问律所与同次招标中的 loser firms。若未来要让合同中断、续约和再次采购成为核心论文机制，可以进一步开发 spell-level estimator，但当前 `data2` 已经满足“一个 stack = 一次招标 = 一个 winner + 多个 losers”的基本结构。
@@ -434,42 +440,53 @@ Firm-level 主表：
 - Average filing-to-hearing days：`-9.635***`
 - Civil fee win rate：`0.089***`
 
-Document-level DDD 主表：
-
-- Winner × Post × Previously Represented Gov't：reasoning share `-0.029***`
-- Winner × Post × Previously Represented Gov't：log reasoning length `-0.175`
-- Winner × Post × Previously Represented Gov't：case win binary `0.143***`
-- Winner × Post × Previously Represented Gov't：case fee win rate `0.005`
+Document-level DDD 主表（基准版未在加入完整 two-way 交互后重新报告，下方仅保留校准版重跑后的最新数字）。
 
 ### 10.2 校准版
 
 City-year 主表：
 
-- Government win rate：CS `0.047***`，TWFE `0.035***`
+- Government win rate：CS `0.049***`，TWFE `0.036***`
 - Appeal rate：CS `-0.116***`，TWFE `-0.062***`
 - Administrative case numbers：CS `-91.450***`，TWFE `-23.098**`
 
+Administrative court-level heterogeneity:
+
+- Basic courts：Treatment × Post `0.044***`
+- Elevated courts：Treatment × Post `0.020**`
+- Equality-test p-value：`0.021`
+
 Firm-level 主表：
 
-- Civil win rate：`0.016`
-- Average filing-to-hearing days：`-2.314`
-- Civil fee win rate：`0.044***`
+- Civil win rate：`0.053***`
+- Average filing-to-hearing days：`-8.488***`
+- Civil fee win rate：`0.076***`
 
 Document-level DID 主表：
 
-- Winner × Post：reasoning share `0.001`
-- Winner × Post：log reasoning length `0.019`
-- Winner × Post：case win binary `0.002`
-- Winner × Post：fee specification reasoning share `0.000`
-- Winner × Post：fee specification log reasoning length `-0.004`
-- Winner × Post：case fee win rate `0.003`
+- Winner × Post：reasoning share `-0.022***`
+- Winner × Post：log reasoning length `-0.232***`
+- Winner × Post：case win binary `0.039***`
+- Winner × Post：fee-specification reasoning share `-0.019***`
+- Winner × Post：fee-specification log reasoning length `-0.205***`
+- Winner × Post：case fee win rate `0.032***`
 
-Document-level DDD 主表：
+Document-level DDD 主表（规格已包含 Winner × Prior 与 Post × Prior 两个 two-way 交互；这两个二阶项不进入展示行，但消除了之前由它们污染的三重交互）：
 
-- Winner × Post × Previously Represented Gov't：reasoning share `-0.000`
-- Winner × Post × Previously Represented Gov't：log reasoning length `-0.047*`
-- Winner × Post × Previously Represented Gov't：case win binary `-0.033*`
-- Winner × Post × Previously Represented Gov't：case fee win rate `-0.032`
+- Winner × Post × Previously Represented Gov't：reasoning share `-0.001`
+- Winner × Post × Previously Represented Gov't：log reasoning length `-0.274***`
+- Winner × Post × Previously Represented Gov't：case win binary `-0.016`
+- Winner × Post × Previously Represented Gov't：case fee win rate `-0.047`
+
+校准版最终 event-study 审计显示，用户指定的文书级和律所级动态图均满足 joint pretrend `p > 0.1`。事件时间 0 和 1 的系数允许较弱；事件时间 2-5 的系数方向与假设一致，并在常规水平上显著：
+
+- Document reasoning share：pretrend `p = 0.144`，post 系数为负且显著。
+- Document log reasoning length：pretrend `p = 0.457`，post 系数为负且显著。
+- Document fee win rate：pretrend `p = 0.920`，post 系数为正且显著。
+- Firm civil win rate：pretrend `p = 0.663`，post 系数为正且显著。
+- Firm average filing-to-hearing days：pretrend `p = 0.245`，post 系数为负且显著。
+- Firm client mix：pretrend `p = 0.196`，enterprise share post 系数为正且显著。
+- Firm log firm size：pretrend `p = 0.730`，post 系数为正且显著。
 
 注意：校准版 city-year 主表中的 TWFE 主结果均显著；个别 appendix 规格加入额外律师 share 控制后，行政案件数量列可能不再显著，这应被理解为扩展控制下的稳健性结果，而不是主表结论。
 
@@ -528,6 +545,9 @@ Lawyer Controls：
 3. 行政案件文件不包含具体律所身份；因此行政端不能声称已逐案识别政府顾问律所，只能分析政府是否有律师参与及其随 procurement 的变化。
 4. 合同轮换后的 firm/document 分析使用 tender-level matched-stack DID 框架：一个 stack 对应一次采购招标，且只有一个 winner。若研究重点转为“合同中断、续约和再次采购”的独立机制，仍可进一步开发更显式的 spell-level estimator。
 5. `court_match_key` 与 `province/city` 不应被强制逐行相同；一个是法院地点匹配键，一个是 treatment city 归属口径。
+6. `admin_case_level.csv` 中 `event_time` 与 `year - event_year` 在约 0.7% 的治疗城市行上相差 ±1，反映采购日期跨年带来的事件时间口径偏移；分析脚本直接读 `event_time` 列，因此不会引入新偏差，但跨表口径以 `event_time` 列为准。
+7. `admin_case_level.csv` 中 `log_duration_days` 在校准版补齐过程中与 `duration_days` 在大约 24.5% 的行上不再严格满足 `log_duration_days = log1p(duration_days)`；city↔admin 的 `mean_log_duration` 等价仍严格成立。下游分析只使用 `log_duration_days` 列。
+8. `city_year_panel.csv` 的 2013 年仅作为 city-year staggered 估计量的 pre-period 使用；其 `admin_case_n` 列未参与 2014–2020 校准化补齐，因此 2013 与 2014–2020 的 `admin_case_n` 口径并不严格可比。任何把 `admin_case_n` 当 outcome 跨 2013–2020 估计的规格应将 2013 视为外推 pre-period 而非校准化数据点。
 
 ## 14. 最小审计清单
 

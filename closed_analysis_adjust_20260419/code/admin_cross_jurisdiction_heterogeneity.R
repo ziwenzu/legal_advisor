@@ -44,6 +44,7 @@ fmt_p <- function(p) {
 
 read_admin_panel <- function(path) {
   dt <- fread(path)
+  dt <- dt[!is.na(court_std) & court_std != ""]
   dt[, city_name := sprintf("%s_%s", province, city)]
   dt[, city_id := .GRP, by = city_name]
   dt[, court_id := .GRP, by = court_std]

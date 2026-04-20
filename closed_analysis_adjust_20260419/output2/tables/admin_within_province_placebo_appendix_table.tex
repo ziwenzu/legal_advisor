@@ -12,7 +12,7 @@ Outcome & Coefficient & SE & Coefficient & SE & Coefficient & SE \\
 \midrule
 \multicolumn{7}{l}{\textit{Panel A. Two-way fixed effects (TWFE)}} \\
 \addlinespace
-Gov.\ Win Rate & 0.035$^{***}$ & (0.006) & 0.036$^{***}$ & (0.007) & 0.031$^{***}$ & (0.007) \\
+Gov.\ Win Rate & 0.036$^{***}$ & (0.006) & 0.037$^{***}$ & (0.007) & 0.033$^{***}$ & (0.007) \\
 Appeal Rate & -0.062$^{***}$ & (0.007) & -0.068$^{***}$ & (0.008) & -0.070$^{***}$ & (0.008) \\
 Admin.\ Cases & -23.098$^{**}$ & (11.164) & -31.427$^{***}$ & (11.298) & -31.278$^{**}$ & (13.401) \\
 \addlinespace
@@ -21,9 +21,9 @@ Cities (treated / never-treated) & \multicolumn{2}{c}{217 / 65} & \multicolumn{2
 \midrule
 \multicolumn{7}{l}{\textit{Panel B. Callaway and Sant'Anna (CS) staggered estimator}} \\
 \addlinespace
-Gov.\ Win Rate & 0.047$^{***}$ & (0.012) & 0.050$^{***}$ & (0.011) & -- & -- \\
-Appeal Rate & -0.116$^{***}$ & (0.014) & -0.107$^{***}$ & (0.011) & -- & -- \\
-Admin.\ Cases & -91.450$^{***}$ & (10.741) & -89.049$^{***}$ & (10.454) & -- & -- \\
+Gov.\ Win Rate & 0.049$^{***}$ & (0.012) & 0.051$^{***}$ & (0.011) & -- & -- \\
+Appeal Rate & -0.116$^{***}$ & (0.013) & -0.107$^{***}$ & (0.010) & -- & -- \\
+Admin.\ Cases & -91.450$^{***}$ & (10.702) & -89.049$^{***}$ & (10.957) & -- & -- \\
 \addlinespace
 Observations & \multicolumn{2}{c}{2,256} & \multicolumn{2}{c}{1,784} & \multicolumn{2}{c}{--} \\
 Cities (treated / never-treated) & \multicolumn{2}{c}{217 / 65} & \multicolumn{2}{c}{158 / 65} & \multicolumn{2}{c}{--} \\
@@ -31,7 +31,7 @@ Cities (treated / never-treated) & \multicolumn{2}{c}{217 / 65} & \multicolumn{2
 \end{tabular}
 \begin{tablenotes}[flushleft]
 \footnotesize
-\item \textit{Note:} Each cell reports the city-year procurement effect on one outcome. Panel A reports Treatment $\times$ Post from two-way fixed-effects regressions; Panel B reports the overall average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group. Headline columns reproduce the main city-year specification on all sample cities. Same-province sample columns restrict the sample to provinces that contain both at least one procurement-adopting city and at least one never-treated city, so that the donor pool is supported within province; the TWFE specification keeps city and year fixed effects. + Province $\times$ Year FE columns add province-by-year fixed effects to the same support-restricted sample, identifying the procurement effect from within-province-year variation; this column is not applicable to the CS estimator and is reported as ``--''. The CS coefficients on government win rate, appeal rate, and administrative-case volume are essentially unchanged when the sample is restricted to within-province donor pools, indicating that the staggered-DiD findings are not driven by cross-province comparisons. Under the tighter within-province identification, the TWFE point estimate for administrative-case volume grows in magnitude and gains precision, suggesting that the headline TWFE understates the contraction. City-year controls: log population, log GDP, log registered lawyers, and log court caseload (the last enters only for the government-win-rate specification, matching the main city-year table). Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS). $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\item \textit{Note:} Each cell reports the city-year procurement effect on one outcome. Panel A reports Treatment $\times$ Post from two-way fixed-effects regressions; Panel B reports the overall ATT from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group. Headline columns reproduce the main city-year specification on all sample cities; Same-province sample columns restrict the sample to provinces that contain both at least one procurement-adopting city and at least one never-treated city; + Province $\times$ Year FE columns add province-by-year fixed effects to that sub-sample (not applicable to the CS estimator and reported as ``--''). City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification. Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS). $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
 \end{tablenotes}
 \end{threeparttable}
 \end{table}

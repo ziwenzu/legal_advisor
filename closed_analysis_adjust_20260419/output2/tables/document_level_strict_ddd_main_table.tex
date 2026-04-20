@@ -9,17 +9,17 @@
  & (1) & (2) & (3) & (4) \\
 Outcome & Reasoning Share & log(Reasoning Length + 1) & Case Win Binary & Case Fee Win Rate \\
 \midrule
-Winner $\times$ Post & 0.001 & 0.009 & 0.003 & 0.007 \\
- & (0.002) & (0.020) & (0.012) & (0.015) \\
+Winner $\times$ Post & -0.021$^{***}$ & -0.207$^{***}$ & 0.030$^{**}$ & 0.032$^{**}$ \\
+ & (0.002) & (0.023) & (0.012) & (0.015) \\
 \addlinespace
-Previously Represented Gov't & -0.009$^{***}$ & -0.040$^{***}$ & 0.021$^{*}$ & 0.032$^{**}$ \\
- & (0.001) & (0.013) & (0.011) & (0.013) \\
+Previously Represented Gov't & -0.005 & -0.004 & -0.003 & -0.015 \\
+ & (0.003) & (0.040) & (0.028) & (0.025) \\
 \addlinespace
-Winner $\times$ Post $\times$ Previously Represented Gov't & -0.000 & -0.047$^{*}$ & -0.033$^{*}$ & -0.032 \\
- & (0.002) & (0.027) & (0.020) & (0.023) \\
+Winner $\times$ Post $\times$ Previously Represented Gov't & -0.001 & -0.274$^{***}$ & -0.016 & -0.047 \\
+ & (0.007) & (0.102) & (0.042) & (0.038) \\
 \addlinespace
 Observations & 1,350,883 & 1,350,883 & 970,741 & 687,105 \\
-$R^2$ & 0.144 & 0.148 & 0.278 & 0.349 \\
+$R^2$ & 0.174 & 0.172 & 0.273 & 0.353 \\
 Case Controls & Yes & Yes & Yes & Yes \\
 Lawyer Controls & Yes & Yes & Yes & Yes \\
 Firm Fixed Effects & Yes & Yes & Yes & Yes \\
@@ -33,7 +33,7 @@ Year $\times$ Education Fixed Effects & Yes & Yes & Yes & Yes \\
 \end{tabular}
 \begin{tablenotes}[flushleft]
 \footnotesize
-\item \textit{Note:} Triple-difference (DDD) coefficients interact Winner $\times$ Post with an indicator for whether the firm previously represented the government in administrative litigation in the same court. Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation. The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance. Identification of the triple interaction comes from the rows with positive prior administrative exposure. Case controls: opposing-counsel presence and plaintiff/defendant entity status. Standardized practice years enters linearly as a lawyer control. Year-by-lawyer-attribute fixed effects for gender, party membership, and education absorb time-specific shocks within each lawyer cohort. Standard errors clustered by firm and court. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\item \textit{Note:} Triple-difference (DDD) coefficients on the interaction Winner $\times$ Post $\times$ Previously Represented Gov't. All two-way interactions among Winner, Post, and the prior-exposure indicator enter the regression; Winner and Post main effects are absorbed by firm and stack-by-year fixed effects. Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation. The sample retains firm-court-case rows where the firm either has no prior government-side administrative appearance in that court or already handled civil cases there before any such appearance, so identification of the triple interaction comes from variation in prior administrative exposure within stack-by-year and court-by-year cells. Case controls: opposing-counsel presence and plaintiff/defendant entity status. Lawyer controls: standardized practice years and a missing-practice-years indicator. Year-by-gender, year-by-party-membership, and year-by-education fixed effects absorb time-varying lawyer-composition shocks. Standard errors clustered by firm and court. $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
 \end{tablenotes}
 \end{threeparttable}
 \end{table}

@@ -78,6 +78,8 @@ read_document_panel <- function(path) {
   dt[, ddd_support_row := as.integer(
     prior_admin_gov_exposure == 0L | has_pre_admin_civil_case_in_court == 1L
   )]
+  dt[, treated_by_prior := treated_firm * prior_admin_gov_exposure]
+  dt[, post_by_prior := post * prior_admin_gov_exposure]
   dt[, ddd_binary := did_treatment * prior_admin_gov_exposure]
 
   dt[, lawyer_gender := as.integer(lawyer_gender)]
@@ -96,6 +98,7 @@ read_document_panel <- function(path) {
   practice_mean <- mean(dt$lawyer_practice_years, na.rm = TRUE)
   practice_sd <- sd(dt$lawyer_practice_years, na.rm = TRUE)
   dt[, lawyer_practice_years_std := (lawyer_practice_years - practice_mean) / practice_sd]
+  dt[, lawyer_practice_years_obs := as.integer(!is.na(lawyer_practice_years))]
   dt[is.na(lawyer_practice_years_std), lawyer_practice_years_std := 0]
 
   dt[, year_gender_fe := sprintf("%s__%s", year, lawyer_gender_group)]
@@ -111,6 +114,7 @@ control_rhs <- paste(
   "plaintiff_party_is_entity",
   "defendant_party_is_entity",
   "lawyer_practice_years_std",
+  "lawyer_practice_years_obs",
   sep = " + "
 )
 
@@ -118,6 +122,8 @@ build_formula <- function(outcome_name) {
   rhs_terms <- paste(
     "did_treatment",
     "prior_admin_gov_exposure",
+    "treated_by_prior",
+    "post_by_prior",
     "ddd_binary",
     control_rhs,
     sep = " + "
@@ -323,13 +329,12 @@ write_latex_table <- function(results) {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Note:} Triple-difference (DDD) coefficients interact Winner $\\times$ Post with an indicator for whether the firm previously represented the government in administrative litigation in the same court.",
+      "\\item \\textit{Note:} Triple-difference (DDD) coefficients on the interaction Winner $\\times$ Post $\\times$ Previously Represented Gov't.",
+      "All two-way interactions among Winner, Post, and the prior-exposure indicator enter the regression; Winner and Post main effects are absorbed by firm and stack-by-year fixed effects.",
       "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases; Case Fee Win Rate is the fee-based win rate in decisive cases with observed fee allocation.",
-      "The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance.",
-      "Identification of the triple interaction comes from the rows with positive prior administrative exposure.",
-      "Case controls: opposing-counsel presence and plaintiff/defendant entity status.",
-      "Standardized practice years enters linearly as a lawyer control.",
-      "Year-by-lawyer-attribute fixed effects for gender, party membership, and education absorb time-specific shocks within each lawyer cohort.",
+      "The sample retains firm-court-case rows where the firm either has no prior government-side administrative appearance in that court or already handled civil cases there before any such appearance, so identification of the triple interaction comes from variation in prior administrative exposure within stack-by-year and court-by-year cells.",
+      "Case controls: opposing-counsel presence and plaintiff/defendant entity status. Lawyer controls: standardized practice years and a missing-practice-years indicator.",
+      "Year-by-gender, year-by-party-membership, and year-by-education fixed effects absorb time-varying lawyer-composition shocks.",
       "Standard errors clustered by firm and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

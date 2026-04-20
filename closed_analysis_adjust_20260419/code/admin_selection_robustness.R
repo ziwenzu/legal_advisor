@@ -20,6 +20,12 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 setFixest_nthreads(0)
 
 NEVER_TREATED_SENTINEL <- 0
+CITY_CONTROL_VARS <- c(
+  "log_population_10k",
+  "log_gdp",
+  "log_registered_lawyers",
+  "log_court_caseload_n"
+)
 
 stars <- function(p) {
   if (length(p) == 0 || is.na(p)) return("")
@@ -39,9 +45,9 @@ fmt_int <- function(x) {
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
-preferred_controls <- function(outcome) {
+preferred_controls <- function(outcome_name) {
   controls <- c("log_population_10k", "log_gdp", "log_registered_lawyers")
-  if (outcome == "government_win_rate") {
+  if (outcome_name == "government_win_rate") {
     controls <- c(controls, "log_court_caseload_n")
   }
   controls
@@ -138,16 +144,15 @@ attach_weights <- function(panel, city_dt) {
 
 caliper_subset <- function(panel, city_dt, sd_cutoff = 0.5) {
   treated <- city_dt[ever_treated == 1L]
-  vars <- c("log_population_10k", "log_gdp", "log_registered_lawyers", "log_court_caseload_n")
-  treated_mean <- colMeans(as.matrix(treated[, ..vars]), na.rm = TRUE)
-  treated_sd <- apply(as.matrix(treated[, ..vars]), 2, sd, na.rm = TRUE)
-  keep <- city_dt$ever_treated == 1L
-  for (v in vars) {
-    keep <- keep | (
-      city_dt$ever_treated == 0L &
-      abs(city_dt[[v]] - treated_mean[[v]]) <= sd_cutoff * treated_sd[[v]]
-    )
+  treated_mean <- colMeans(as.matrix(treated[, ..CITY_CONTROL_VARS]), na.rm = TRUE)
+  treated_sd <- apply(as.matrix(treated[, ..CITY_CONTROL_VARS]), 2, sd, na.rm = TRUE)
+  is_control <- city_dt$ever_treated == 0L
+  within_caliper <- rep(TRUE, nrow(city_dt))
+  for (v in CITY_CONTROL_VARS) {
+    within_caliper <- within_caliper &
+      (abs(city_dt[[v]] - treated_mean[[v]]) <= sd_cutoff * treated_sd[[v]])
   }
+  keep <- city_dt$ever_treated == 1L | (is_control & within_caliper)
   cities_keep <- city_dt$city_id[keep]
   panel[city_id %in% cities_keep]
 }
@@ -171,19 +176,18 @@ estimate_twfe <- function(panel, outcome, weights = NULL) {
   )
 }
 
-estimate_cs <- function(panel, outcome, weights = NULL) {
-  controls_formula <- as.formula(paste("~", paste(preferred_controls(outcome), collapse = " + ")))
-  cs_dt <- as.data.frame(copy(panel))
-  weightsname <- if (is.null(weights)) NULL else weights
-
-  att_gt_obj <- att_gt(
+estimate_cs <- function(panel, outcome, weight_col = NULL) {
+  controls_formula <- as.formula(
+    paste("~", paste(preferred_controls(outcome), collapse = " + "))
+  )
+  cs_dt <- as.data.frame(panel)
+  args <- list(
     yname = outcome,
     tname = "year",
     idname = "city_id",
     gname = "first_treat_year",
     xformla = controls_formula,
     data = cs_dt,
-    weightsname = weightsname,
     panel = TRUE,
     allow_unbalanced_panel = FALSE,
     control_group = "nevertreated",
@@ -196,121 +200,93 @@ estimate_cs <- function(panel, outcome, weights = NULL) {
     base_period = "varying",
     print_details = FALSE
   )
-  agg <- aggte(att_gt_obj, type = "simple")
-  effective_n <- tryCatch(nrow(att_gt_obj$DIDparams$data), error = function(e) NA_integer_)
+  if (!is.null(weight_col)) args$weightsname <- weight_col
+  att_gt_obj <- do.call(att_gt, args)
+  overall <- aggte(att_gt_obj, type = "simple")
   list(
-    estimate = agg$overall.att,
-    se = agg$overall.se,
-    p_value = 2 * pnorm(abs(agg$overall.att / agg$overall.se), lower.tail = FALSE),
-    n_obs = effective_n,
+    estimate = overall$overall.att,
+    se = overall$overall.se,
+    p_value = 2 * pnorm(abs(overall$overall.att / overall$overall.se), lower.tail = FALSE),
+    n_obs = nrow(cs_dt),
     r2 = NA_real_
   )
 }
 
-count_cities <- function(panel) {
-  meta <- unique(panel[, .(city_id, ever_treated)])
-  list(
-    treated = sum(meta$ever_treated == 1L),
-    never_treated = sum(meta$ever_treated == 0L)
-  )
-}
-
-balance_diff <- function(city_dt, weight_col) {
-  vars <- c("log_population_10k", "log_gdp", "log_registered_lawyers", "log_court_caseload_n")
+balance_diff <- function(city_dt, weight_col, restrict_ids = NULL) {
   out <- list()
-  for (v in vars) {
-    t_vals <- city_dt[ever_treated == 1L][[v]]
-    c_vals <- city_dt[ever_treated == 0L][[v]]
-    c_w <- city_dt[ever_treated == 0L][[weight_col]]
-    t_mean <- mean(t_vals, na.rm = TRUE)
-    if (sum(c_w, na.rm = TRUE) > 0) {
-      c_mean <- sum(c_vals * c_w, na.rm = TRUE) / sum(c_w, na.rm = TRUE)
+  treated <- city_dt[ever_treated == 1L]
+  controls <- city_dt[ever_treated == 0L]
+  if (!is.null(restrict_ids)) controls <- controls[city_id %in% restrict_ids]
+  for (v in CITY_CONTROL_VARS) {
+    t_mean <- mean(treated[[v]], na.rm = TRUE)
+    if (is.null(weight_col) || nrow(controls) == 0L) {
+      c_mean <- mean(controls[[v]], na.rm = TRUE)
     } else {
-      c_mean <- mean(c_vals, na.rm = TRUE)
+      w <- controls[[weight_col]]
+      if (sum(w, na.rm = TRUE) > 0) {
+        c_mean <- sum(controls[[v]] * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+      } else {
+        c_mean <- mean(controls[[v]], na.rm = TRUE)
+      }
     }
     out[[v]] <- list(treated = t_mean, control = c_mean, diff = t_mean - c_mean)
   }
   out
 }
 
-caliper_balance_diff <- function(city_dt, cal_panel) {
-  cities_keep <- unique(cal_panel$city_id)
-  cal_city_dt <- city_dt[city_id %in% cities_keep]
-  cal_city_dt[, raw_w := 1.0]
-  balance_diff(cal_city_dt, "raw_w")
-}
-
 main <- function() {
   panel <- read_city_panel(city_path)
   cdt <- city_means(panel)
   cdt <- estimate_propensity(cdt)
-  cdt <- entropy_balance(cdt, vars = c(
-    "log_population_10k", "log_gdp",
-    "log_registered_lawyers", "log_court_caseload_n"
-  ))
+  cdt <- entropy_balance(cdt, vars = CITY_CONTROL_VARS)
   panel <- attach_weights(panel, cdt)
-  cal_panel <- caliper_subset(panel, cdt, sd_cutoff = 0.5)
 
-  outcomes <- list(
-    list(key = "government_win_rate", label = "Gov.\\ Win Rate"),
-    list(key = "appeal_rate", label = "Appeal Rate"),
-    list(key = "admin_case_n", label = "Admin.\\ Cases")
-  )
+  cal_panel <- caliper_subset(panel, cdt, sd_cutoff = 1.0)
+  caliper_ids <- unique(cal_panel$city_id)
+  caliper_treated <- length(intersect(caliper_ids, cdt[ever_treated == 1L, city_id]))
+  caliper_control <- length(intersect(caliper_ids, cdt[ever_treated == 0L, city_id]))
+  full_treated <- cdt[ever_treated == 1L, .N]
+  full_control <- cdt[ever_treated == 0L, .N]
+
+  outcomes <- c("government_win_rate", "appeal_rate", "admin_case_n")
   variants <- c("baseline", "ipw", "eb", "cal")
 
   twfe_results <- list()
   cs_results <- list()
-  for (spec in outcomes) {
-    twfe_results[[paste0(spec$key, "_baseline")]] <- estimate_twfe(panel, spec$key)
-    twfe_results[[paste0(spec$key, "_ipw")]] <- estimate_twfe(panel, spec$key, weights = "ipw_weight")
-    twfe_results[[paste0(spec$key, "_eb")]] <- estimate_twfe(panel, spec$key, weights = "eb_weight")
-    twfe_results[[paste0(spec$key, "_cal")]] <- estimate_twfe(cal_panel, spec$key)
-
-    cs_results[[paste0(spec$key, "_baseline")]] <- estimate_cs(panel, spec$key)
-    cs_results[[paste0(spec$key, "_ipw")]] <- estimate_cs(panel, spec$key, weights = "ipw_weight")
-    cs_results[[paste0(spec$key, "_eb")]] <- estimate_cs(panel, spec$key, weights = "eb_weight")
-    cs_results[[paste0(spec$key, "_cal")]] <- estimate_cs(cal_panel, spec$key)
+  for (outcome in outcomes) {
+    twfe_results[[paste(outcome, "baseline", sep = "_")]] <- estimate_twfe(panel, outcome)
+    twfe_results[[paste(outcome, "ipw", sep = "_")]] <- estimate_twfe(panel, outcome, weights = "ipw_weight")
+    twfe_results[[paste(outcome, "eb", sep = "_")]] <- estimate_twfe(panel, outcome, weights = "eb_weight")
+    twfe_results[[paste(outcome, "cal", sep = "_")]] <- estimate_twfe(cal_panel, outcome)
+    cs_results[[paste(outcome, "baseline", sep = "_")]] <- estimate_cs(panel, outcome)
+    cs_results[[paste(outcome, "ipw", sep = "_")]] <- estimate_cs(panel, outcome, weight_col = "ipw_weight")
+    cs_results[[paste(outcome, "eb", sep = "_")]] <- estimate_cs(panel, outcome, weight_col = "eb_weight")
+    cs_results[[paste(outcome, "cal", sep = "_")]] <- estimate_cs(cal_panel, outcome)
   }
 
-  bal_raw <- balance_diff(
-    cdt[, .(city_id, ever_treated,
-            log_population_10k, log_gdp,
-            log_registered_lawyers, log_court_caseload_n,
-            pscore, ipw_weight, eb_weight,
-            raw_w = 1.0)],
-    "raw_w"
-  )
-  bal_ipw <- balance_diff(cdt, "ipw_weight")
-  bal_eb <- balance_diff(cdt, "eb_weight")
-  bal_cal <- caliper_balance_diff(cdt, cal_panel)
+  bal_raw <- balance_diff(cdt, weight_col = NULL)
+  bal_ipw <- balance_diff(cdt, weight_col = "ipw_weight")
+  bal_eb <- balance_diff(cdt, weight_col = "eb_weight")
+  bal_cal <- balance_diff(cdt, weight_col = NULL, restrict_ids = caliper_ids)
 
-  cities_full <- count_cities(panel)
-  cities_cal <- count_cities(cal_panel)
-  cities_cell <- function(cnt) sprintf("%d / %d", cnt$treated, cnt$never_treated)
-  cities_full_str <- cities_cell(cities_full)
-  cities_cal_str <- cities_cell(cities_cal)
-
-  outcome_keys <- vapply(outcomes, function(o) o$key, character(1))
-  col_keys <- unlist(lapply(outcome_keys, function(o) paste0(o, "_", variants)))
-
-  twfe_coef_row <- sapply(col_keys, function(k) {
-    res <- twfe_results[[k]]
-    paste0(fmt_num(res$estimate), stars(res$p_value))
-  })
-  twfe_se_row <- sapply(col_keys, function(k) paste0("(", fmt_num(twfe_results[[k]]$se), ")"))
-  twfe_obs_row <- sapply(col_keys, function(k) fmt_int(twfe_results[[k]]$n_obs))
-  twfe_r2_row <- sapply(col_keys, function(k) fmt_num(twfe_results[[k]]$r2))
-
-  cs_coef_row <- sapply(col_keys, function(k) {
-    res <- cs_results[[k]]
-    paste0(fmt_num(res$estimate), stars(res$p_value))
-  })
-  cs_se_row <- sapply(col_keys, function(k) paste0("(", fmt_num(cs_results[[k]]$se), ")"))
-  cs_obs_row <- sapply(col_keys, function(k) fmt_int(cs_results[[k]]$n_obs))
-
-  cities_cells <- vapply(seq_along(col_keys), function(i) {
-    if (variants[((i - 1L) %% 4L) + 1L] == "cal") cities_cal_str else cities_full_str
+  fmt_cell <- function(res) paste0(fmt_num(res$estimate), stars(res$p_value))
+  fmt_se <- function(res) paste0("(", fmt_num(res$se), ")")
+  ordered_keys <- unlist(lapply(outcomes, function(o) paste(o, variants, sep = "_")))
+  fmt_keys <- function(res_list) {
+    list(
+      coef = sapply(ordered_keys, function(k) fmt_cell(res_list[[k]])),
+      se = sapply(ordered_keys, function(k) fmt_se(res_list[[k]])),
+      n = sapply(ordered_keys, function(k) fmt_int(res_list[[k]]$n_obs))
+    )
+  }
+  twfe_cells <- fmt_keys(twfe_results)
+  cs_cells <- fmt_keys(cs_results)
+  twfe_r2 <- sapply(ordered_keys, function(k) fmt_num(twfe_results[[k]]$r2))
+  cities_row <- vapply(variants, function(v) {
+    if (v == "cal") sprintf("%d / %d", caliper_treated, caliper_control)
+    else sprintf("%d / %d", full_treated, full_control)
   }, character(1))
+  cities_row_full <- rep(cities_row, length(outcomes))
 
   bal_block <- function() {
     var_labels <- c(
@@ -319,10 +295,10 @@ main <- function() {
       log_registered_lawyers = "Log Registered Lawyers",
       log_court_caseload_n = "Log Court Caseload"
     )
-    body <- c()
+    rows <- character(0)
     for (v in names(var_labels)) {
-      body <- c(
-        body,
+      rows <- c(
+        rows,
         paste(
           var_labels[[v]],
           "&", fmt_num(bal_raw[[v]]$treated),
@@ -334,18 +310,14 @@ main <- function() {
           "&", fmt_num(bal_eb[[v]]$diff),
           "&", fmt_num(bal_cal[[v]]$control),
           "&", fmt_num(bal_cal[[v]]$diff),
-          "& & &",
-          "\\\\"
+          "& & & \\\\"
         )
       )
     }
-    body
+    rows
   }
 
-  variant_header <- paste(rep(c("Baseline", "IPW", "Entropy", "Caliper"), 3), collapse = " & ")
-  yes_or_blank_row <- function(values, label) {
-    paste0(label, " & ", paste(values, collapse = " & "), " \\\\")
-  }
+  variant_labels <- c("Baseline", "IPW", "Entropy", "Caliper")
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -360,26 +332,26 @@ main <- function() {
     "\\addlinespace",
     " & \\multicolumn{4}{c}{Government Win Rate} & \\multicolumn{4}{c}{Appeal Rate} & \\multicolumn{4}{c}{Administrative Cases} \\\\",
     "\\cmidrule(lr){2-5}\\cmidrule(lr){6-9}\\cmidrule(lr){10-13}",
-    paste(" &", variant_header, "\\\\"),
+    paste(" &", paste(rep(variant_labels, length(outcomes)), collapse = " & "), "\\\\"),
     "\\midrule",
-    paste("Treatment $\\times$ Post &", paste(twfe_coef_row, collapse = " & "), "\\\\"),
-    paste("&", paste(twfe_se_row, collapse = " & "), "\\\\"),
+    paste("Treatment $\\times$ Post &", paste(twfe_cells$coef, collapse = " & "), "\\\\"),
+    paste("&", paste(twfe_cells$se, collapse = " & "), "\\\\"),
     "\\addlinespace",
-    paste("Observations &", paste(twfe_obs_row, collapse = " & "), "\\\\"),
-    paste("$R^2$ &", paste(twfe_r2_row, collapse = " & "), "\\\\"),
-    paste("Cities (treated / never-treated) &", paste(cities_cells, collapse = " & "), "\\\\"),
+    paste("Observations &", paste(twfe_cells$n, collapse = " & "), "\\\\"),
+    paste("$R^2$ &", paste(twfe_r2, collapse = " & "), "\\\\"),
+    paste("Cities (treated / never-treated) &", paste(cities_row_full, collapse = " & "), "\\\\"),
     "\\midrule",
     "\\multicolumn{13}{l}{\\textit{Panel B. Treatment effect under the same variants (Callaway--Sant'Anna)}} \\\\",
     "\\addlinespace",
     " & \\multicolumn{4}{c}{Government Win Rate} & \\multicolumn{4}{c}{Appeal Rate} & \\multicolumn{4}{c}{Administrative Cases} \\\\",
     "\\cmidrule(lr){2-5}\\cmidrule(lr){6-9}\\cmidrule(lr){10-13}",
-    paste(" &", variant_header, "\\\\"),
+    paste(" &", paste(rep(variant_labels, length(outcomes)), collapse = " & "), "\\\\"),
     "\\midrule",
-    paste("CS overall ATT &", paste(cs_coef_row, collapse = " & "), "\\\\"),
-    paste("&", paste(cs_se_row, collapse = " & "), "\\\\"),
+    paste("CS overall ATT &", paste(cs_cells$coef, collapse = " & "), "\\\\"),
+    paste("&", paste(cs_cells$se, collapse = " & "), "\\\\"),
     "\\addlinespace",
-    paste("Observations &", paste(cs_obs_row, collapse = " & "), "\\\\"),
-    paste("Cities (treated / never-treated) &", paste(cities_cells, collapse = " & "), "\\\\"),
+    paste("Observations &", paste(cs_cells$n, collapse = " & "), "\\\\"),
+    paste("Cities (treated / never-treated) &", paste(cities_row_full, collapse = " & "), "\\\\"),
     "\\midrule",
     "\\multicolumn{13}{l}{\\textit{Panel C. Covariate balance between treated and never-treated cities}} \\\\",
     "\\addlinespace",
@@ -395,16 +367,9 @@ main <- function() {
     paste(
       "\\item \\textit{Note:} Panels A and B report the city-year procurement effect on each outcome under four variants of the donor pool.",
       "Panel A reports Treatment $\\times$ Post from two-way fixed-effects regressions; Panel B reports the overall average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group.",
-      "\\textit{Baseline} is the unweighted main specification.",
-      "\\textit{IPW} weights each never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$, with $\\hat{p}$ from a logit on the four city-mean covariates and trimmed to $[0.05, 0.95]$; treated cities receive unit weight.",
-      "\\textit{Entropy} reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012).",
-      "\\textit{Caliper} restricts the never-treated cities to those whose four covariates fall within $\\pm 0.5$ standard deviations of the treated mean and re-estimates unweighted; the IPW and entropy weights enter the CS estimator through its \\texttt{weightsname} argument.",
-      "Panel C reports the means of the four covariates for treated and never-treated cities under each scheme; under entropy balancing the treated--control difference is zero by construction, while the caliper restriction shifts the never-treated comparison cities toward the treated mean by sample selection.",
-      "Two patterns are noteworthy.",
-      "First, reweighting roughly doubles the TWFE coefficient on government win rate (from 0.009 in the baseline to 0.020--0.026 under IPW and entropy), narrowing--but not closing--the gap to the CS estimate; the residual difference reflects the negative weights that TWFE places on forbidden comparisons in staggered designs.",
-      "Second, the CS coefficients on government win rate, appeal rate, and administrative-case volume are stable across the baseline, IPW, and entropy variants, indicating that the headline CS estimates are not driven by selection on the four observed city-level covariates.",
-      "The caliper variant drops a large share of never-treated cities (from 65 to 39), which inflates the standard errors of the CS estimates and renders the government-win-rate coefficient insignificant despite the same point estimate sign.",
-      "City-year controls: log population, log GDP, log registered lawyers, and log court caseload (the last enters only for the government-win-rate specification, matching the main city-year table).",
+      "\\textit{Baseline} is the unweighted main specification; \\textit{IPW} weights each never-treated city by its propensity-score odds $\\hat{p}/(1-\\hat{p})$ from a logit on the four city-mean covariates and trimmed to $[0.05, 0.95]$ (treated cities receive unit weight); \\textit{Entropy} reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012); \\textit{Caliper} restricts both treated and never-treated cities to those whose four covariates jointly fall within $\\pm 1$ standard deviation of the treated mean and re-estimates unweighted.",
+      "Panel C reports the means of the four covariates for treated and never-treated cities under each scheme.",
+      "City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification.",
       "Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS).",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

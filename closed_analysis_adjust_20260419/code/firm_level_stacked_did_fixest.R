@@ -186,8 +186,8 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
   pre_adj <- c(0, 1)
 
   if (outcome_label == "Civil Win Rate") {
-    ann_y <- 0.20
-    pre_y <- 0.20
+    ann_y <- 0.25
+    pre_y <- 0.25
   }
   if (outcome_label == "Civil Fee Win Rate") {
     ann_y <- 0.30
@@ -196,6 +196,10 @@ plot_event_study <- function(event_dt, outcome_label, y_title, main_effect, main
   if (outcome_label == "Average Hearing Time") {
     ann_y <- 20
     pre_y <- -20
+  }
+  if (outcome_label == "Log Firm Size") {
+    ann_y <- 0.15
+    pre_y <- 0.15
   }
 
   pdf(file = file_path, width = 7.2, height = 5.0, family = "serif")
@@ -267,9 +271,9 @@ plot_client_mix_event <- function(event_dt, ate, se, pre_p, file_path,
   }
 
   ann_x <- 2
-  ann_y <- y_range[2] + 0.04 * y_span
+  ann_y <- 0.20
   pre_x <- -4.8
-  pre_y <- y_range[2] - 0.10 * y_span
+  pre_y <- 0.20
 
   ylim_lo <- min(y_range[1] - 0.06 * y_span, pre_y) - 0.04 * y_span
   ylim_hi <- max(y_range[2] + 0.12 * y_span, ann_y) + 0.04 * y_span

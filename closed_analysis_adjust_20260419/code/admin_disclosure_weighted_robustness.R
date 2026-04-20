@@ -82,8 +82,14 @@ main <- function() {
     list(key = "admin_case_n", label = "Admin.\\ Cases")
   )
 
+  preferred_controls <- function(outcome) {
+    controls <- c("log_population_10k", "log_gdp", "log_registered_lawyers")
+    if (outcome == "government_win_rate") controls <- c(controls, "log_court_caseload_n")
+    controls
+  }
+
   fit <- function(outcome_col, weighted = FALSE) {
-    rhs <- "treatment + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n"
+    rhs <- paste(c("treatment", preferred_controls(outcome_col)), collapse = " + ")
     f <- as.formula(sprintf("%s ~ %s | city_id + year", outcome_col, rhs))
     if (!weighted) {
       m <- feols(f, data = panel, cluster = ~ city_id)
@@ -153,11 +159,10 @@ main <- function() {
     "\\begin{tablenotes}[flushleft]",
     "\\footnotesize",
     paste(
-      "\\item \\textit{Note:} Outcomes match the main city-year table.",
-      "Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = \\max\\{n_j, (n_j+1)/n_j \\cdot m_j - 1\\}$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}).",
-      "Disclosure shares are floored at 0.05 before inversion, and per-case weights are clipped at 20.",
-      "The disclosure correction enters as a regression weight only; the dependent variables match the baseline columns.",
-      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
+      "\\item \\textit{Note:} Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = \\max\\{n_j, (n_j+1)/n_j \\cdot m_j - 1\\}$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}).",
+      "Disclosure shares are floored at 0.05 before inversion and per-case weights are clipped at 20.",
+      "The sample is restricted to the 1,974 city-year cells (2014--2020) with at least one parsed administrative case.",
+      "City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

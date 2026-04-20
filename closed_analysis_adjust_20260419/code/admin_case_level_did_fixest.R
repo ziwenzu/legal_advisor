@@ -48,6 +48,8 @@ fmt_p <- function(p_value) {
 read_admin_panel <- function(path) {
   dt <- fread(path)
 
+  dt <- dt[!is.na(court_std) & court_std != ""]
+
   dt[, city_name := sprintf("%s_%s", province, city)]
   dt[, city_id := .GRP, by = city_name]
   dt[, court_id := .GRP, by = court_std]
@@ -174,8 +176,6 @@ build_appendix_table <- function(results_list, file_path) {
   obs_row <- sapply(spec_keys, function(key) fmt_int(results_list[[key]]$n_obs))
   r2_row <- sapply(spec_keys, function(key) fmt_num(results_list[[key]]$r2))
 
-  gov_counsel_yes <- c("", "Yes", "Yes", "Yes")
-  gov_counsel_post_yes <- c("", "", "Yes", "Yes")
   opp_counsel_yes <- c("", "", "", "Yes")
 
   lines <- c(
@@ -208,9 +208,7 @@ build_appendix_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Plaintiff entity &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
-    paste("Government counsel &", paste(gov_counsel_yes, collapse = " & "), "\\\\"),
-    paste("Government counsel $\\times$ Post &", paste(gov_counsel_post_yes, collapse = " & "), "\\\\"),
+    paste("Plaintiff type &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Opposing counsel &", paste(opp_counsel_yes, collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 4), collapse = " & "), "\\\\"),

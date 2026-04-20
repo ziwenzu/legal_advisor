@@ -24,9 +24,9 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 NEVER_TREATED_SENTINEL <- 0
 
 EVENT_PLOT_LAYOUT <- list(
-  "Government Win Rate" = list(ann_y = 0.28, pre_y = 0.28),
-  "Appeal Rate" = list(ann_y = NULL, pre_y = -0.10),
-  "Administrative Case Numbers" = list(ann_y = 100, pre_y = -200)
+  "Government Win Rate" = list(ann_y = 0.18, pre_y = 0.18, ylim_hi = 0.20),
+  "Appeal Rate" = list(ann_y = 0.10, pre_y = 0.10),
+  "Administrative Case Numbers" = list(ann_y = 100, pre_y = 100)
 )
 
 stars <- function(p_value) {
@@ -86,14 +86,6 @@ estimate_twfe_main <- function(dt, outcome_name, extra_controls = character(0)) 
   feols(formula_obj, data = dt, cluster = ~ city_id)
 }
 
-estimate_twfe_event <- function(dt, outcome_name) {
-  rhs_terms <- c("i(rel_time, ever_treated, ref = -1)", preferred_controls(outcome_name))
-  formula_obj <- as.formula(
-    sprintf("%s ~ %s | city_id + year", outcome_name, paste(rhs_terms, collapse = " + "))
-  )
-  feols(formula_obj, data = dt, cluster = ~ city_id)
-}
-
 estimate_cs <- function(dt, outcome_name) {
   controls_formula <- as.formula(
     paste("~", paste(preferred_controls(outcome_name), collapse = " + "))
@@ -137,33 +129,6 @@ extract_twfe_coef <- function(model) {
     n_obs = nobs(model),
     r2 = fitstat(model, "r2")
   )
-}
-
-extract_twfe_event <- function(model) {
-  ip <- iplot(model, only.params = TRUE)
-  dt <- as.data.table(ip$prms)
-  setnames(
-    dt,
-    c("estimate", "ci_low", "ci_high", "estimate_names", "is_ref"),
-    c("estimate", "ci_lo", "ci_hi", "event_time", "is_ref")
-  )
-
-  dt[
-    ,
-    `:=`(
-      event_time = as.numeric(event_time),
-      estimator = "TWFE OLS"
-    )
-  ][
-    ,
-    .(
-      estimator,
-      event_time,
-      estimate,
-      ci_lo = fifelse(is_ref, 0, ci_lo),
-      ci_hi = fifelse(is_ref, 0, ci_hi)
-    )
-  ]
 }
 
 extract_cs_coef <- function(cs_obj) {
@@ -249,6 +214,9 @@ plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_
 
   ylim_lo <- min(y_range[1] - 0.05 * y_span, ann_y, pre_y) - 0.05 * y_span
   ylim_hi <- max(y_range[2] + 0.08 * y_span, ann_y, pre_y) + 0.05 * y_span
+  if (!is.null(layout) && !is.null(layout$ylim_hi)) {
+    ylim_hi <- layout$ylim_hi
+  }
 
   pdf(file = file_path, width = 7.4, height = 5.2, family = "serif")
   op <- par(

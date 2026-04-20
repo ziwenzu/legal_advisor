@@ -12,12 +12,12 @@
 \cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
  & Baseline & IPW & Entropy & Caliper & Baseline & IPW & Entropy & Caliper & Baseline & IPW & Entropy & Caliper \\
 \midrule
-Treatment $\times$ Post & 0.035$^{***}$ & 0.034$^{***}$ & 0.034$^{***}$ & 0.036$^{***}$ & -0.062$^{***}$ & -0.076$^{***}$ & -0.077$^{***}$ & -0.052$^{***}$ & -23.098$^{**}$ & -45.301$^{***}$ & -53.954$^{***}$ & -32.121$^{***}$ \\
-& (0.006) & (0.007) & (0.007) & (0.006) & (0.007) & (0.009) & (0.010) & (0.007) & (11.164) & (10.546) & (11.349) & (12.060) \\
+Treatment $\times$ Post & 0.036$^{***}$ & 0.035$^{***}$ & 0.035$^{***}$ & 0.034$^{***}$ & -0.062$^{***}$ & -0.076$^{***}$ & -0.077$^{***}$ & -0.049$^{***}$ & -23.098$^{**}$ & -45.301$^{***}$ & -53.954$^{***}$ & -30.854$^{**}$ \\
+& (0.006) & (0.006) & (0.007) & (0.005) & (0.007) & (0.009) & (0.010) & (0.007) & (11.164) & (10.546) & (11.349) & (12.469) \\
 \addlinespace
-Observations & 2,256 & 2,256 & 2,256 & 2,048 & 2,256 & 2,256 & 2,256 & 2,048 & 2,256 & 2,256 & 2,256 & 2,048 \\
-$R^2$ & 0.412 & 0.421 & 0.453 & 0.423 & 0.435 & 0.428 & 0.445 & 0.451 & 0.818 & 0.833 & 0.841 & 0.815 \\
-Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 \\
+Observations & 2,256 & 2,256 & 2,256 & 1,960 & 2,256 & 2,256 & 2,256 & 1,960 & 2,256 & 2,256 & 2,256 & 1,960 \\
+$R^2$ & 0.412 & 0.421 & 0.453 & 0.426 & 0.435 & 0.428 & 0.445 & 0.455 & 0.818 & 0.833 & 0.841 & 0.813 \\
+Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 \\
 \midrule
 \multicolumn{13}{l}{\textit{Panel B. Treatment effect under the same variants (Callaway--Sant'Anna)}} \\
 \addlinespace
@@ -25,11 +25,11 @@ Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 2
 \cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
  & Baseline & IPW & Entropy & Caliper & Baseline & IPW & Entropy & Caliper & Baseline & IPW & Entropy & Caliper \\
 \midrule
-CS overall ATT & 0.047$^{***}$ & 0.042$^{***}$ & 0.045$^{***}$ & 0.023$^{*}$ & -0.116$^{***}$ & -0.107$^{***}$ & -0.109$^{***}$ & -0.117$^{***}$ & -91.450$^{***}$ & -84.133$^{***}$ & -83.585$^{***}$ & -88.436$^{***}$ \\
-& (0.013) & (0.008) & (0.009) & (0.014) & (0.013) & (0.011) & (0.009) & (0.015) & (10.821) & (9.680) & (9.681) & (11.548) \\
+CS overall ATT & 0.049$^{***}$ & 0.043$^{***}$ & 0.046$^{***}$ & 0.009 & -0.116$^{***}$ & -0.107$^{***}$ & -0.109$^{***}$ & -0.080$^{**}$ & -91.450$^{***}$ & -84.133$^{***}$ & -83.585$^{***}$ & -67.268$^{***}$ \\
+& (0.012) & (0.008) & (0.009) & (0.018) & (0.014) & (0.011) & (0.009) & (0.033) & (10.869) & (10.804) & (10.114) & (13.792) \\
 \addlinespace
-Observations & 2,256 & 2,256 & 2,256 & 2,048 & 2,256 & 2,256 & 2,256 & 2,048 & 2,256 & 2,256 & 2,256 & 2,048 \\
-Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 \\
+Observations & 2,256 & 2,256 & 2,256 & 1,960 & 2,256 & 2,256 & 2,256 & 1,960 & 2,256 & 2,256 & 2,256 & 1,960 \\
+Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 28 \\
 \midrule
 \multicolumn{13}{l}{\textit{Panel C. Covariate balance between treated and never-treated cities}} \\
 \addlinespace
@@ -37,15 +37,15 @@ Cities (treated / never-treated) & 217 / 65 & 217 / 65 & 217 / 65 & 217 / 39 & 2
 \cmidrule(lr){2-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
  & Treated & Control & Diff & Control & Diff & Control & Diff & Control & Diff & & \\
 \midrule
-Log Population (10k) & 5.954 & 5.590 & 0.364 & 5.894 & 0.060 & 5.954 & -0.000 & 6.028 & -0.075 & & & \\
-Log GDP & 7.583 & 6.877 & 0.707 & 7.361 & 0.223 & 7.583 & -0.000 & 7.221 & 0.363 & & & \\
-Log Registered Lawyers & 6.195 & 5.338 & 0.857 & 5.881 & 0.314 & 6.195 & 0.000 & 5.753 & 0.442 & & & \\
-Log Court Caseload & 8.975 & 8.374 & 0.600 & 8.760 & 0.215 & 8.975 & 0.000 & 8.783 & 0.192 & & & \\
+Log Population (10k) & 5.954 & 5.590 & 0.364 & 5.894 & 0.060 & 5.954 & -0.000 & 5.980 & -0.026 & & & \\
+Log GDP & 7.583 & 6.877 & 0.707 & 7.361 & 0.223 & 7.583 & -0.000 & 7.242 & 0.341 & & & \\
+Log Registered Lawyers & 6.195 & 5.338 & 0.857 & 5.881 & 0.314 & 6.195 & 0.000 & 5.754 & 0.441 & & & \\
+Log Court Caseload & 8.975 & 8.374 & 0.600 & 8.760 & 0.215 & 8.975 & 0.000 & 8.781 & 0.193 & & & \\
 \bottomrule
 \end{tabular}
 \begin{tablenotes}[flushleft]
 \footnotesize
-\item \textit{Note:} Panels A and B report the city-year procurement effect on each outcome under four variants of the donor pool. Panel A reports Treatment $\times$ Post from two-way fixed-effects regressions; Panel B reports the overall average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group. \textit{Baseline} is the unweighted main specification. \textit{IPW} weights each never-treated city by its propensity-score odds $\hat{p}/(1-\hat{p})$, with $\hat{p}$ from a logit on the four city-mean covariates and trimmed to $[0.05, 0.95]$; treated cities receive unit weight. \textit{Entropy} reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012). \textit{Caliper} restricts the never-treated cities to those whose four covariates fall within $\pm 0.5$ standard deviations of the treated mean and re-estimates unweighted; the IPW and entropy weights enter the CS estimator through its \texttt{weightsname} argument. Panel C reports the means of the four covariates for treated and never-treated cities under each scheme; under entropy balancing the treated--control difference is zero by construction, while the caliper restriction shifts the never-treated comparison cities toward the treated mean by sample selection. Two patterns are noteworthy. First, reweighting roughly doubles the TWFE coefficient on government win rate (from 0.009 in the baseline to 0.020--0.026 under IPW and entropy), narrowing--but not closing--the gap to the CS estimate; the residual difference reflects the negative weights that TWFE places on forbidden comparisons in staggered designs. Second, the CS coefficients on government win rate, appeal rate, and administrative-case volume are stable across the baseline, IPW, and entropy variants, indicating that the headline CS estimates are not driven by selection on the four observed city-level covariates. The caliper variant drops a large share of never-treated cities (from 65 to 39), which inflates the standard errors of the CS estimates and renders the government-win-rate coefficient insignificant despite the same point estimate sign. City-year controls: log population, log GDP, log registered lawyers, and log court caseload (the last enters only for the government-win-rate specification, matching the main city-year table). Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS). $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
+\item \textit{Note:} Panels A and B report the city-year procurement effect on each outcome under four variants of the donor pool. Panel A reports Treatment $\times$ Post from two-way fixed-effects regressions; Panel B reports the overall average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group. \textit{Baseline} is the unweighted main specification; \textit{IPW} weights each never-treated city by its propensity-score odds $\hat{p}/(1-\hat{p})$ from a logit on the four city-mean covariates and trimmed to $[0.05, 0.95]$ (treated cities receive unit weight); \textit{Entropy} reweights the never-treated cities to match the treated means of the four covariates exactly (Hainmueller 2012); \textit{Caliper} restricts both treated and never-treated cities to those whose four covariates jointly fall within $\pm 1$ standard deviation of the treated mean and re-estimates unweighted. Panel C reports the means of the four covariates for treated and never-treated cities under each scheme. City-year controls follow the main city-year table: log population, log GDP, and log registered lawyers in all columns, with log court caseload added only for the government-win-rate specification. Standard errors clustered by city (TWFE) and obtained from the multiplier bootstrap clustered by city (CS). $^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$.
 \end{tablenotes}
 \end{threeparttable}
 \end{table}
