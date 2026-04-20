@@ -56,8 +56,17 @@ estimate <- function(panel, outcome, fe_terms = "city_id + year") {
 
 main <- function() {
   panel <- read_panel()
-  treated_provinces <- unique(panel[ever_treated == 1L, province])
-  in_province <- panel[province %in% treated_provinces]
+  province_support <- unique(panel[, .(province, city_id, ever_treated)])
+  province_support <- province_support[
+    ,
+    .(
+      has_treated_city = any(ever_treated == 1L),
+      has_never_treated_city = any(ever_treated == 0L)
+    ),
+    by = province
+  ]
+  support_provinces <- province_support[has_treated_city == TRUE & has_never_treated_city == TRUE, province]
+  in_province <- panel[province %in% support_provinces]
 
   outcomes <- list(
     list(key = "government_win_rate", label = "Gov.\\ Win Rate"),
@@ -92,13 +101,12 @@ main <- function() {
     )
   }, character(1))
 
-  obs_row <- vapply(rows, function(r) {
-    paste(
-      "Observations &", fmt_int(r$headline$n_obs), "& --",
-      "&", fmt_int(r$sample$n_obs), "& --",
-      "&", fmt_int(r$pyear$n_obs), "& -- \\\\"
-    )
-  }, character(1))
+  obs_headline <- unique(vapply(rows, function(r) r$headline$n_obs, numeric(1)))
+  obs_sample <- unique(vapply(rows, function(r) r$sample$n_obs, numeric(1)))
+  obs_pyear <- unique(vapply(rows, function(r) r$pyear$n_obs, numeric(1)))
+  if (length(obs_headline) != 1L || length(obs_sample) != 1L || length(obs_pyear) != 1L) {
+    stop("Outcome-specific observation counts differ in admin_within_province_placebo.R")
+  }
 
   lines <- c(
     "\\begin{table}[!htbp]",
@@ -114,6 +122,12 @@ main <- function() {
     "Outcome & Coefficient & SE & Coefficient & SE & Coefficient & SE \\\\",
     "\\midrule",
     body,
+    "\\addlinespace",
+    paste(
+      "Observations &", fmt_int(obs_headline), "& --",
+      "&", fmt_int(obs_sample), "& --",
+      "&", fmt_int(obs_pyear), "& -- \\\\"
+    ),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -121,8 +135,8 @@ main <- function() {
     paste(
       "\\item \\textit{Note:} Each row reports Treatment $\\times$ Post from city-year two-way fixed-effects regressions for one outcome.",
       "Headline columns reproduce the main city-year table.",
-      "Same-province sample columns restrict the never-treated control group to cities in provinces that contain at least one procurement-adopting city; specification keeps city and year fixed effects.",
-      "+ Province $\\times$ Year Fixed Effects columns add province $\\times$ year fixed effects on the same restricted sample, identifying the procurement effect within province-year cells.",
+      "Same-province sample columns restrict the sample to provinces that contain both at least one procurement-adopting city and at least one never-treated city, so the donor pool is supported within province; the specification keeps city and year fixed effects.",
+      "+ Province $\\times$ Year Fixed Effects columns add province $\\times$ year fixed effects on the same support-restricted sample, identifying the procurement effect within province-year cells.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."

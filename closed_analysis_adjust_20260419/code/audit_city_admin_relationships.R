@@ -69,4 +69,6 @@ out <- rbindlist(lapply(metrics, function(v) {
 cat("case_no_duplicates=", anyDuplicated(admin_dt$case_no), "\n")
 cat("city_year_panel_key_duplicates=", city_dt[, anyDuplicated(sprintf('%s|%s|%s', province, city, year))], "\n")
 cat("comparison_years=", paste(overlap_years, collapse = ","), "\n")
+cat("unmatched_city_rows=", merged[, sum(is.na(government_win_rate_city))], "\n")
+cat("unmatched_admin_rows=", merged[, sum(is.na(government_win_rate_admin))], "\n")
 print(out)

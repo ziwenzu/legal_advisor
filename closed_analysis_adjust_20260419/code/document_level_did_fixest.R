@@ -13,7 +13,7 @@ get_root_dir <- function() {
 }
 
 root_dir <- get_root_dir()
-input_file <- file.path(root_dir, "data", "document_level_winner_vs_loser_clean.csv")
+input_file <- file.path(root_dir, "data", "document_level_winner_vs_loser.csv")
 figure_dir <- file.path(root_dir, "output", "figures")
 table_dir <- file.path(root_dir, "output", "tables")
 output_tag <- Sys.getenv("DOCUMENT_LEVEL_OUTPUT_TAG", unset = "")
@@ -76,12 +76,18 @@ read_document_panel <- function(path) {
   dt[, opponent_has_lawyer := as.integer(opponent_has_lawyer)]
   dt[, case_decisive := as.integer(case_decisive)]
 
-  dt[, lawyer_female := fifelse(lawyer_gender == "女", 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_gender := as.integer(lawyer_gender)]
+  dt[, lawyer_edu := as.integer(lawyer_edu)]
+
+  dt[, lawyer_female := as.integer(lawyer_gender == 1L)]
   dt[, lawyer_ccp_bin := fifelse(lawyer_ccp == 1, 1L, 0L, na = NA_integer_)]
-  dt[, lawyer_high_edu := fifelse(lawyer_edu %chin% c("master", "PhD"), 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_high_edu := as.integer(lawyer_edu >= 4L)]
   dt[, lawyer_gender_group := fifelse(is.na(lawyer_female), "unknown", fifelse(lawyer_female == 1L, "female", "male"))]
   dt[, lawyer_ccp_group := fifelse(is.na(lawyer_ccp_bin), "unknown", fifelse(lawyer_ccp_bin == 1L, "ccp", "nonccp"))]
   dt[, lawyer_edu_group := fifelse(is.na(lawyer_high_edu), "unknown", fifelse(lawyer_high_edu == 1L, "highedu", "baselineedu"))]
+  if (!any(dt$lawyer_female == 1L, na.rm = TRUE)) {
+    stop("lawyer_female contains no female observations after UTF-8 decoding")
+  }
   practice_mean <- mean(dt$lawyer_practice_years, na.rm = TRUE)
   practice_sd <- sd(dt$lawyer_practice_years, na.rm = TRUE)
   dt[, lawyer_practice_years_std := (lawyer_practice_years - practice_mean) / practice_sd]
@@ -108,11 +114,15 @@ build_formula <- function(outcome_name, rhs_terms, fe_terms) {
   as.formula(sprintf("%s ~ %s | %s", outcome_name, rhs_terms, fe_terms))
 }
 
-estimate_model <- function(dt, outcome_name, sample_filter = NULL, fe_variant = c("main", "court_year")) {
+estimate_model <- function(dt, outcome_name, sample_filter = NULL, fe_variant = c("main", "court_year"),
+                           restrict_window = FALSE) {
   fe_variant <- match.arg(fe_variant)
   work_dt <- copy(dt)
 
   keep_mask <- !is.na(work_dt[[outcome_name]])
+  if (isTRUE(restrict_window)) {
+    keep_mask <- keep_mask & !is.na(work_dt$event_time_window)
+  }
   if (!is.null(sample_filter)) {
     keep_mask <- keep_mask & work_dt[, eval(sample_filter)]
   }
@@ -236,7 +246,7 @@ extract_main_coef <- function(model, target_term = "did_treatment") {
       se = NA_real_,
       p_value = NA_real_,
       n_obs = nobs(model),
-      r2 = fitstat(model, "r2")
+      r2 = fitstat(model, "r2")[[1]]
     ))
   }
   list(
@@ -244,7 +254,7 @@ extract_main_coef <- function(model, target_term = "did_treatment") {
     se = row[["Std. Error"]],
     p_value = row[["Pr(>|t|)"]],
     n_obs = nobs(model),
-    r2 = fitstat(model, "r2")
+    r2 = fitstat(model, "r2")[[1]]
   )
 }
 
@@ -280,10 +290,6 @@ extract_pretest <- function(model, pre_periods = c(-5, -4, -3, -2)) {
     p_value = unname(test_obj$p),
     df1 = unname(test_obj$df1)
   )
-}
-
-build_event_study_table <- function(...) {
-  invisible(NULL)
 }
 
 plot_event_study <- function(event_dt, outcome_name, y_title, main_effect, main_se, pre_p, file_path) {
@@ -403,6 +409,7 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
+    paste("Sample &", paste(sample_row, collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Firm Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
@@ -410,8 +417,8 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste("Court $\\times$ Year Fixed Effects &", paste(c("", "", "", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Court Fixed Effects &", paste(c("Yes", "Yes", "Yes", "", "", ""), collapse = " & "), "\\\\"),
-    paste("Controls (case-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
-    paste("Controls (lawyer-level) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -419,7 +426,8 @@ build_main_table <- function(main_results, robust_results, file_path) {
     paste(
       "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Reasoning Share is the share of the judgment text devoted to legal reasoning; log(Reasoning Length + 1) is the natural log of one plus the character count of the reasoning section; Case Win Binary indicates the represented side prevailing among decisive cases.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, Chinese Communist Party (CCP) membership, education, and standardized practice years.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status.",
+      "Standardized practice years enters linearly; year-by-gender, year-by-Chinese Communist Party (CCP), and year-by-education fixed effects absorb time-varying lawyer-composition effects.",
       "Standard errors clustered by firm and stack in columns 1--3 and by firm and court in columns 4--6.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -458,14 +466,15 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
+    paste("Sample &", paste(rep("Decisive cases with fee share", 2), collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Firm Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Year Fixed Effects &", paste(c("Yes", ""), collapse = " & "), "\\\\"),
     paste("Court $\\times$ Year Fixed Effects &", paste(c("", "Yes"), collapse = " & "), "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Controls (case-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Controls (lawyer-level) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Case Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
+    paste("Lawyer Controls &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
     "\\bottomrule",
     "\\end{tabular}",
     "\\begin{tablenotes}[flushleft]",
@@ -473,7 +482,8 @@ build_fee_winrate_appendix_table <- function(main_result, robust_result, file_pa
     paste(
       "\\item \\textit{Note:} Document-level difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       "Outcome is the represented side's fee-based win rate in decisive cases with observed fee allocation.",
-      "Case-level controls: opposing-side representation, plaintiff and defendant entity status. Lawyer-level controls: gender, Chinese Communist Party (CCP) membership, education, and standardized practice years.",
+      "Case-level controls: opposing-side representation, plaintiff and defendant entity status.",
+      "Standardized practice years enters linearly; year-by-gender, year-by-Chinese Communist Party (CCP), and year-by-education fixed effects absorb time-varying lawyer-composition effects.",
       "Standard errors clustered by firm and stack in column 1 and by firm and court in column 2.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -620,6 +630,15 @@ main <- function() {
     main_coef <- extract_main_coef(main_model)
     main_pre <- extract_pretest(main_event)
     main_results[[outcome_name]] <- main_coef
+    main_plot_coef <- extract_main_coef(
+      estimate_model(
+        dt,
+        outcome_name,
+        sample_filter = spec$sample_filter,
+        fe_variant = "main",
+        restrict_window = TRUE
+      )
+    )
 
     robust_model <- estimate_model(dt, outcome_name, sample_filter = spec$sample_filter, fe_variant = "court_year")
     robust_event <- estimate_event_model(dt, outcome_name, sample_filter = spec$sample_filter, fe_variant = "court_year")
@@ -632,30 +651,12 @@ main <- function() {
         event_dt = extract_event_dt(main_event),
         outcome_name = outcome_name,
         y_title = spec$y_title,
-        main_effect = main_coef$estimate,
-        main_se = main_coef$se,
+        main_effect = main_plot_coef$estimate,
+        main_se = main_plot_coef$se,
         pre_p = main_pre$p_value,
         file_path = file.path(
           figure_dir,
           build_output_name(sprintf("document_level_%s_event_study", outcome_name), "pdf")
-        )
-      )
-
-      build_event_study_table(
-        event_dt = extract_event_dt(main_event),
-        outcome_label = spec$y_title,
-        main_effect = main_coef$estimate,
-        main_se = main_coef$se,
-        main_p = main_coef$p_value,
-        pre_p = main_pre$p_value,
-        file_path = file.path(
-          table_dir,
-          build_output_name(sprintf("document_level_%s_event_study_table", outcome_name), "tex")
-        ),
-        file_label = sprintf("document_level_%s_event_study", outcome_name),
-        caption = sprintf(
-          "Event-Study Estimates Behind the Document-Level %s Figure",
-          spec$y_title
         )
       )
     }
@@ -671,6 +672,15 @@ main <- function() {
   fee_main_event <- estimate_event_model(dt, "case_win_rate_fee", sample_filter = fee_winrate_spec$sample_filter, fe_variant = "main")
   fee_main_coef <- extract_main_coef(fee_main_model)
   fee_main_pre <- extract_pretest(fee_main_event)
+  fee_main_plot_coef <- extract_main_coef(
+    estimate_model(
+      dt,
+      "case_win_rate_fee",
+      sample_filter = fee_winrate_spec$sample_filter,
+      fe_variant = "main",
+      restrict_window = TRUE
+    )
+  )
 
   fee_robust_model <- estimate_model(dt, "case_win_rate_fee", sample_filter = fee_winrate_spec$sample_filter, fe_variant = "court_year")
   fee_robust_coef <- extract_main_coef(fee_robust_model)
@@ -679,28 +689,13 @@ main <- function() {
     event_dt = extract_event_dt(fee_main_event),
     outcome_name = "case_win_rate_fee",
     y_title = fee_winrate_spec$y_title,
-    main_effect = fee_main_coef$estimate,
-    main_se = fee_main_coef$se,
+    main_effect = fee_main_plot_coef$estimate,
+    main_se = fee_main_plot_coef$se,
     pre_p = fee_main_pre$p_value,
     file_path = file.path(
       figure_dir,
       build_output_name("document_level_case_fee_win_rate_event_study", "pdf")
     )
-  )
-
-  build_event_study_table(
-    event_dt = extract_event_dt(fee_main_event),
-    outcome_label = fee_winrate_spec$y_title,
-    main_effect = fee_main_coef$estimate,
-    main_se = fee_main_coef$se,
-    main_p = fee_main_coef$p_value,
-    pre_p = fee_main_pre$p_value,
-    file_path = file.path(
-      table_dir,
-      build_output_name("document_level_case_fee_win_rate_event_study_table", "tex")
-    ),
-    file_label = "document_level_case_fee_win_rate_event_study",
-    caption = "Event-Study Estimates Behind the Document-Level Fee-Based Win-Rate Figure"
   )
 
   build_fee_winrate_appendix_table(

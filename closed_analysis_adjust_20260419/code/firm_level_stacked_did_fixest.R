@@ -322,14 +322,6 @@ plot_client_mix_event <- function(event_dt, ate, se, pre_p, file_path,
   )
 }
 
-build_event_study_table <- function(...) {
-  invisible(NULL)
-}
-
-build_client_mix_event_study_table <- function(...) {
-  invisible(NULL)
-}
-
 build_main_table <- function(results_list, file_path) {
   column_keys <- c(
     "civil_win_rate_mean",
@@ -369,6 +361,7 @@ build_main_table <- function(results_list, file_path) {
     paste("Winner $\\times$ Post &", paste(coef_row, collapse = " & "), "\\\\"),
     paste("&", paste(se_row, collapse = " & "), "\\\\"),
     "\\addlinespace",
+    paste("Sample &", paste(sample_row, collapse = " & "), "\\\\"),
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Stack $\\times$ Firm Fixed Effects &", paste(rep("Yes", 3), collapse = " & "), "\\\\"),
@@ -381,6 +374,8 @@ build_main_table <- function(results_list, file_path) {
       "\\item \\textit{Note:} Stacked difference-in-differences (DID) coefficients on Winner $\\times$ Post.",
       sprintf("Treatment group: procurement winners; control group: %s.", control_note),
       "Estimation samples differ by column because each outcome is defined on firm-year cells with a positive denominator: column 1 keeps cells with at least one decisive civil case; column 2 keeps cells with at least one civil case and a non-missing filing-to-hearing duration; column 3 keeps cells with at least one decisive case for which the fee allocation is observed.",
+      "All firm-year specifications are estimated on the event-time window [-5, 5], matching the firm-level event-study figures.",
+      "Because outcomes are already collapsed to the firm-year level, the stacked DID does not add case-level controls.",
       "Standard errors clustered by stack and firm.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -484,25 +479,6 @@ main <- function() {
         build_output_name(sprintf("firm_level_%s_event_study", outcome_name), "pdf")
       )
     )
-
-    build_event_study_table(
-      event_dt = extract_event_dt(event_model),
-      outcome_label = spec$label,
-      y_title = spec$y_title,
-      main_effect = main_coef$estimate,
-      main_se = main_coef$se,
-      main_p = main_coef$p_value,
-      pre_p = pre_test$p_value,
-      file_path = file.path(
-        table_dir,
-        build_output_name(sprintf("firm_level_%s_event_study_table", outcome_name), "tex")
-      ),
-      file_label = sprintf("firm_level_%s_event_study", outcome_name),
-      caption = sprintf(
-        "Event-Study Estimates Behind the Firm-Level %s Figure",
-        spec$label
-      )
-    )
   }
 
   fee_spec <- list(
@@ -535,22 +511,6 @@ main <- function() {
       figure_dir,
       build_output_name("firm_level_civil_fee_win_rate_event_study", "pdf")
     )
-  )
-
-  build_event_study_table(
-    event_dt = extract_event_dt(fee_event_model),
-    outcome_label = fee_spec$label,
-    y_title = fee_spec$y_title,
-    main_effect = fee_result$estimate,
-    main_se = fee_result$se,
-    main_p = fee_result$p_value,
-    pre_p = fee_pretest$p_value,
-    file_path = file.path(
-      table_dir,
-      build_output_name("firm_level_civil_fee_win_rate_event_study_table", "tex")
-    ),
-    file_label = "firm_level_civil_fee_win_rate_event_study",
-    caption = "Event-Study Estimates Behind the Firm-Level Fee-Based Win-Rate Figure"
   )
 
   build_main_table(
@@ -603,15 +563,6 @@ main <- function() {
       file_path = file.path(
         table_dir,
         build_output_name("firm_level_client_mix_mechanism_table", "tex")
-      )
-    )
-
-    build_client_mix_event_study_table(
-      enterprise_dt = enterprise_pack$event_dt,
-      enterprise_pack = enterprise_pack,
-      file_path = file.path(
-        table_dir,
-        build_output_name("firm_level_client_mix_event_study_table", "tex")
       )
     )
   }

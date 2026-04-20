@@ -36,7 +36,7 @@
   - 只保留分析代码
   - 每个表 / 图对应的生成脚本见 [code/README.md](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/code/README.md)
 - `data/`
-  - 只保留分析实际读取的 5 个 CSV
+  - 只保留分析实际读取的 4 个 CSV
 - `output/tables/`
   - 当前版本生成的全部 `.tex` 表
 - `output/figures/`
@@ -58,7 +58,7 @@
 - 本文件夹里的 `code/` 是 analysis-only code
 - 外部 `code/code_dgp_tuning_external/` 是 DGP / tuning-only code
 
-## 5. 五个分析数据文件
+## 5. 四个分析数据文件
 
 ### 5.1 `city_year_panel.csv`
 
@@ -110,17 +110,19 @@
 - 在这个封闭包里，`cause_group` 已经是当前分析版本实际使用的案由分类
 - `did_treatment = treated_city × post` 在当前 CSV 中严格成立
 - `event_time` 在行政案件数据里是用于分析的相对时点变量，其支持被截在 `[-5, 5]`
+- 在当前封闭包中，`cross_jurisdiction = 1` 与 `court_level %in% {intermediate, high, specialized}` 等价；它在代码里作为“非基层法院 / 跨区域审理安排”的代理变量使用
+- `province` 和 `city` 是行政案件归属到 procurement treatment 的城市口径；`court_std` 是实际审理法院名称。二者在跨区域审理、异地法院或模拟数据中的法院分配下不要求逐行同地，因此不要用 `province/city` 强行覆盖 `court_std`
 
-### 5.3 `document_level_winner_vs_loser_clean.csv`
+### 5.3 `document_level_winner_vs_loser.csv`
 
-- 路径：[document_level_winner_vs_loser_clean.csv](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/data/document_level_winner_vs_loser_clean.csv)
+- 路径：[document_level_winner_vs_loser.csv](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/data/document_level_winner_vs_loser.csv)
 - 观测单位：文书级案件观察
 - 年份：`2010-2020`
 - 主键：`case_uid`
 - 当前行数：`1,829,763`
 - 主键重复：`0`
 
-这个文件用于 document-level DID 主表、event study 和属性异质性表。
+这个文件是文书级主文件，同时供 document-level DID、DDD 和描述统计使用。
 
 核心变量：
 
@@ -130,36 +132,19 @@
 - 控制变量：`opponent_has_lawyer`, `plaintiff_party_is_entity`, `defendant_party_is_entity`
 - 律师属性：`lawyer_gender`, `lawyer_practice_years`, `lawyer_ccp`, `lawyer_edu`
 - 链接键：`stack_id`, `firm_id`, `law_firm`
+- DDD 专用变量：`court_match_key`, `prior_admin_gov_exposure`, `has_pre_admin_civil_case_in_court`
 
 说明：
 
 - `did_treatment = treated_firm × post` 在当前 CSV 中严格成立
 - 当前 `event_time` 支持到 `[-10, 6]`，但文书级 event-study 代码会把绘图窗口裁到 `[-5, 5]`
-
-### 5.4 `document_level_winner_vs_loser_ddd.csv`
-
-- 路径：[document_level_winner_vs_loser_ddd.csv](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/data/document_level_winner_vs_loser_ddd.csv)
-- 观测单位：与 document clean 完全同一层级的文书级观察
-- 年份：`2010-2020`
-- 主键：`case_uid`
-- 当前行数：`1,829,763`
-- 主键重复：`0`
-
-这个文件用于 DDD 主表。
-
-它相对于 `document_level_winner_vs_loser_clean.csv` 额外增加的关键字段是：
-
-- `court_match_key`
-- `prior_admin_gov_exposure`
-- `has_pre_admin_civil_case_in_court`
-
-说明：
-
-- 这个文件是 document clean 的“同层扩展版”，不是更高层聚合
-- 在当前封闭包中，它与 document clean 的行数相同，`case_uid` 顺序也一致
-- DDD 脚本会先删掉 `court_match_key` 为空的行；当前 CSV 中这类行有 `1` 条
-
-### 5.5 `firm_level.csv`
+- `lawyer_gender` 在当前封闭包中编码为 `1 = female, 0 = male`，不保留缺失
+- `lawyer_edu` 在当前封闭包中编码为 `1 = others, 2 = associate, 3 = college, 4 = master, 5 = PhD`，不保留缺失
+- 这个文件以原主文书分析数据的共享变量为准，并接上 DDD 识别独有的 3 个法院暴露变量；因此它替代了原先两份重复的 document-level CSV
+- `court_match_key` 是 DDD 规格使用的标准化法院匹配键；它把原始 `court` 名称归并到稳定的法院单元，用于构造 court-by-year 固定效应、firm-by-court 暴露变量和 court-level 聚类
+- 当前版本已按行政案件数据中的标准法院名对开发区法院和带有文书噪声前缀的法院 key 做了地点规范化；例如 `成都高新技术产业开发区人民法院` 统一为 `成都市高新技术产业开发区人民法院`，以便与行政端 `court_std` 的地点口径对齐
+- `court_match_key` 表示法院所在地口径，不表示案件归属的 procurement city；因此它与行政案件文件里的 `province/city` 不是逐行等价关系
+### 5.4 `firm_level.csv`
 
 - 路径：[firm_level.csv](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/data/firm_level.csv)
 - 观测单位：`stack_id × firm_id × year`
@@ -183,7 +168,9 @@
 
 - `did_treatment = treated_firm × 1[event_time >= 0]` 在当前 CSV 中严格成立
 - 当前 `event_time` 支持到 `[-10, 6]`，firm-level event-study 代码同样只画 `[-5, 5]`
+- firm-level 主 DID 与 firm-level event-study 使用同一 `[-5, 5]` 事件时间窗口，而不是整段 `[-10, 6]`
 - 这个面板保留了 matched stack 设计下的 zero-case firm-year cells，因此它不等于“只把 document CSV 简单 group by 一次”的裸结果
+- `winner_firm` 记录 stack 中的中标律所名称；`treated_firm` 是该行 firm-year 单元是否被编码为处理组的指标。二者相关但不必逐行完全相同，因此不应把 `winner_firm == treated_firm` 当作数据恒等式
 
 ## 6. 数据之间的关系：哪些必须等价，哪些不需要硬等价
 
@@ -194,13 +181,10 @@
 1. `admin_case_level.csv -> city_year_panel.csv`  
    这是“低层案件数据聚合到城市-年面板”的严格聚合恒等式。
 
-2. `document_level_winner_vs_loser_clean.csv <-> document_level_winner_vs_loser_ddd.csv`  
-   这是“同一文书样本在加入 DDD 所需法院暴露变量后的同层一一对应关系”。
-
-3. `document_level_winner_vs_loser_clean.csv -> firm_level.csv`  
+2. `document_level_winner_vs_loser.csv -> firm_level.csv`  
    这是“文书级样本聚合到律所-年样本”的守恒关系与内部算术恒等式。
 
-如果只写第 1 组，会让人误以为只有 city/admin 之间需要核对；其实文书级与 DDD、文书级与 firm-level 之间也都必须把关系讲清楚。
+如果只写第 1 组，会让人误以为只有 city/admin 之间需要核对；其实文书级与 firm-level 之间的聚合关系，以及 DDD 在同一文书文件内额外调用哪些列，也都必须讲清楚。
 
 ### 6.1 必须严格等价的关系
 
@@ -225,28 +209,13 @@
 - 这个等价关系只要求在 `2014-2020` 成立
 - `2013` 是 city-year 的额外 pre-period，不要求在 admin case 文件中存在逐案镜像
 
-#### B. `document_level_winner_vs_loser_clean.csv` 与 `document_level_winner_vs_loser_ddd.csv`
-
-这两个文件不是“低层 vs 高层”的关系，而是同一层观测的主样本和扩展样本。
-
-当前封闭包中，二者满足：
-
-- 行数完全相同：`1,829,763`
-- `case_uid` 主键一一对应
-- `document_level_winner_vs_loser_ddd.csv` 可以理解为 `document_level_winner_vs_loser_clean.csv` 加上 DDD 所需的额外法院暴露信息
-
-因此：
-
-- clean 文件是 document-level DID 的基础输入
-- DDD 文件是在同一文书样本上叠加第三维处理信息
-
-#### C. `document_level_winner_vs_loser_clean.csv` 与 `firm_level.csv`
+#### B. `document_level_winner_vs_loser.csv` 与 `firm_level.csv`
 
 这两层不是逐行等价，而是“文书级样本”和“按 `stack_id × firm_id × year` 聚合后的律所-年样本”。
 
 在当前封闭包中，以下恒等式已经验证：
 
-- `sum(firm_level.civil_case_n) = 1,829,763 = nrow(document_level_winner_vs_loser_clean)`
+- `sum(firm_level.civil_case_n) = 1,829,763 = nrow(document_level_winner_vs_loser)`
 - `sum(firm_level.civil_decisive_case_n) = 1,335,823 = sum(document_level.case_decisive)`
 - 对每个 `stack_id × firm_id × year`，若 `civil_decisive_case_n > 0`，则  
   `civil_win_rate_mean = civil_win_n_binary / civil_decisive_case_n`
@@ -268,9 +237,9 @@
 
 1. 在 `2014-2020` 上，`city_year_panel.csv` 中 7 个核心 city-year 结果变量，等于 `admin_case_level.csv` 按 `province × city × year` 聚合后的均值或计数。
 
-2. `document_level_winner_vs_loser_ddd.csv` 与 `document_level_winner_vs_loser_clean.csv` 是同一文书级样本；前者是在后者基础上增加 DDD 所需法院暴露变量的扩展版本，因此二者以 `case_uid` 一一对应。
+2. `document_level_winner_vs_loser.csv` 同时服务于 document DID 与 DDD；DDD 只是在同一文书级样本上额外调用 `court_match_key`、`prior_admin_gov_exposure` 和 `has_pre_admin_civil_case_in_court` 三个字段。
 
-3. `firm_level.csv` 是 `document_level_winner_vs_loser_clean.csv` 在 `stack_id × firm_id × year` 上的分析面板；因此总案件数和总 decisive-case 数在聚合后必须守恒。
+3. `firm_level.csv` 是 `document_level_winner_vs_loser.csv` 在 `stack_id × firm_id × year` 上的分析面板；因此总案件数和总 decisive-case 数在聚合后必须守恒。
 
 4. `firm_level.csv` 内部的 rate 变量不是独立自由变量，而应满足分子 / 分母定义，例如 `civil_win_rate_mean = civil_win_n_binary / civil_decisive_case_n`。
 
@@ -287,7 +256,7 @@
 2. `firm_level.csv` 不应被理解为“直接从 document clean 逐列裸 group-by 一次即可完全重建”。  
    原因是 firm panel 保留了 matched stack 设计下的 zero-case firm-year cells，并直接把一组 firm-cell 汇总变量作为分析输入。
 
-3. `document_level_winner_vs_loser_ddd.csv` 虽然与 clean 文件一一对应，但 DDD 有额外的 estimation filter。  
+3. `document_level_winner_vs_loser.csv` 同时支持 DID 和 DDD，但 DDD 有额外的 estimation filter。  
    当前 DDD 脚本会：
    - 先删掉 `court_match_key` 为空的行
    - 再保留 `prior_admin_gov_exposure == 0` 或 `has_pre_admin_civil_case_in_court == 1` 的支持样本
@@ -298,6 +267,7 @@
 
 - `treatment` 是城市在该年是否处于采购后状态的时间变化处理变量
 - `first_treat_year` 不存储在 CSV 中，而是在 [city_year_cs_twfe_figures_tables.R](/Users/ziwenzu/Library/CloudStorage/Dropbox/research/1_Law_project/Legal_advisor/closed_analysis_adjust_20260419/code/city_year_cs_twfe_figures_tables.R) 中根据 `treatment` 历史动态生成
+- 当前封闭包中的 city controls 使用当年值；如果未来要改成严格预定控制，最适合优先滞后的是 `log_court_caseload_n`
 
 ### 行政案件层面
 
@@ -319,7 +289,7 @@
 
 ## 8. 分析脚本与结果的关系
 
-这个封闭包中的分析代码只读取 `data/` 下的 5 个 CSV，不读取 parquet，不读取中间文件，也不依赖外部数据路径。
+这个封闭包中的分析代码只读取 `data/` 下的 4 个 CSV，不读取 parquet，不读取中间文件，也不依赖外部数据路径。
 
 每个表 / 图由哪个脚本生成，完整对应关系见：
 
@@ -332,7 +302,7 @@
 - 城市层面稳健性：`admin_selection_robustness.R`, `admin_disclosure_weighted_robustness.R`, `admin_within_province_placebo.R`, `admin_placebo_alternative_estimator.R`
 - 文书级主结果：`document_level_did_fixest.R`
 - DDD 主结果：`document_level_ddd_fixest.R`
-- firm-level 主结果：`firm_level_stacked_did_fixest.R`
+- firm-level 主结果：`firm_level_stacked_did_fixest.R`（不加入额外 case-level controls，因为结果变量已经是 firm-year 汇总量）
 - 描述统计与 adoption 时间线：`admin_descriptives_appendix.R`
 - city/admin 聚合审计：`audit_city_admin_relationships.R`
 
@@ -355,8 +325,8 @@
 2. 不要把 firm-level 面板误读成“文书级数据的机械 group-by”。  
    它是 matched-stack 设计下的分析输入面板，包含 zero-case cells 和一组已经定好的 firm-cell 汇总变量。
 
-3. 理论上至少要交代三组关系，而不是只交代一组：  
+3. 理论上至少要交代两组跨文件关系，再补充一组文件内 DDD 识别关系：  
    `admin_case_level -> city_year_panel` 的聚合恒等式，  
-   `document clean <-> DDD` 的同层一一对应，  
-   `document clean -> firm_level` 的聚合守恒关系。  
+   `document_level_winner_vs_loser -> firm_level` 的聚合守恒关系，  
+   以及 `document_level_winner_vs_loser` 内部哪些额外字段只服务于 DDD 识别。  
    其中最严格、最应该逐项核对的，是 city-year 与 admin case 在 `2014-2020` 的那 7 个聚合指标。

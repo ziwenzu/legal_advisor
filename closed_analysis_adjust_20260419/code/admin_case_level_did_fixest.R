@@ -51,8 +51,6 @@ read_admin_panel <- function(path) {
   dt[, city_name := sprintf("%s_%s", province, city)]
   dt[, city_id := .GRP, by = city_name]
   dt[, court_id := .GRP, by = court_std]
-  dt[, court_year_fe := sprintf("%s__%s", court_id, year)]
-  dt[, cause_year_fe := sprintf("%s__%s", cause_group, year)]
 
   dt[, treated_city := as.integer(treated_city)]
   dt[, post := as.integer(post)]

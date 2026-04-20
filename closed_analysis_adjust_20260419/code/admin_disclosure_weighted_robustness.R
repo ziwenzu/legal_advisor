@@ -51,8 +51,9 @@ parse_case_numbers <- function(case_no) {
 }
 
 main <- function() {
-  cases <- fread(admin_path)
+  cases <- fread(admin_path, encoding = "UTF-8")
   parsed <- parse_case_numbers(cases$case_no)
+  cat("case-number regex matched:", sum(!is.na(parsed$seq)), "/", nrow(cases), "\n")
   cases[, c("cn_year", "court_code", "procedure", "seq") := parsed]
   cases <- cases[!is.na(seq) & !is.na(court_code) & !is.na(procedure) & seq <= 50000]
 
@@ -144,7 +145,7 @@ main <- function() {
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
     paste("Disclosure-inverse weight &", paste(weighted_yes, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -153,7 +154,8 @@ main <- function() {
     "\\footnotesize",
     paste(
       "\\item \\textit{Note:} Outcomes match the main city-year table.",
-      "Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = (n_j+1)/n_j \\cdot m_j - 1$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}); per-case weights are clipped at 20.",
+      "Even columns weight each city-year by its disclosure-corrected case count $\\sum_j 1/\\hat{p}_j$, where $\\hat{p}_j = n_j / \\hat{K}_j$ is the German-tank disclosure share for case $j$'s (court, year, procedure) cell with $\\hat{K}_j = \\max\\{n_j, (n_j+1)/n_j \\cdot m_j - 1\\}$ (Liu, Wang, and Lyu 2023, \\textit{Journal of Public Economics}).",
+      "Disclosure shares are floored at 0.05 before inversion, and per-case weights are clipped at 20.",
       "The disclosure correction enters as a regression weight only; the dependent variables match the baseline columns.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
       "Standard errors clustered by city.",

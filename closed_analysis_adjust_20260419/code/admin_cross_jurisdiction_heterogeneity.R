@@ -156,7 +156,7 @@ build_table <- function(results_list, file_path) {
       "\\item \\textit{Note:} Linear-probability coefficients on Treatment $\\times$ Post with the government-win indicator as the outcome, estimated on the indicated case sub-sample.",
       "Columns 1--2 split by court level: basic-level (district) people's courts versus intermediate, high, or specialized courts; the latter serve as a proxy for the cross-region adjudication arrangement of Liu, Wang, and Lyu (2023, \\textit{Journal of Public Economics}).",
       "Columns 3--4 split by whether the plaintiff is local to the defendant city.",
-      "The Coefficient equality test reports the two-sided $p$-value for $H_0$: column 1 coefficient = column 2 coefficient (and analogously for columns 3 vs 4) using the $z$-statistic with stack-clustered standard errors and treating the two sub-samples as independent.",
+      "The Coefficient equality test reports the two-sided $p$-value for $H_0$: column 1 coefficient = column 2 coefficient (and analogously for columns 3 vs 4) using the $z$-statistic computed from city- and court-clustered standard errors, treating the two sub-samples as independent and ignoring any residual within-city dependence across the split samples.",
       "Standard errors clustered by city and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),

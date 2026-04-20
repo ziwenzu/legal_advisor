@@ -228,10 +228,6 @@ build_plot_data <- function(cs_event_dt) {
   ]
 }
 
-build_event_study_table <- function(...) {
-  invisible(NULL)
-}
-
 plot_event_study <- function(plot_dt, outcome_label, y_title, cs_att, cs_se, cs_pre_p, file_path) {
   plot_dt <- copy(plot_dt)
   plot_dt[, x_plot := event_time]
@@ -342,7 +338,7 @@ build_table_tex <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes"), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -353,7 +349,8 @@ build_table_tex <- function(results_list, file_path) {
       "\\item \\textit{Note:}",
       "Odd columns report the average treatment effect on the treated from the Callaway and Sant'Anna (CS) staggered estimator with never-treated cities as the comparison group;",
       "even columns report Treatment $\\times$ Post from a two-way fixed-effects (TWFE) regression.",
-      "Controls include log population, log GDP, log registered lawyers, and log court caseload.",
+      "All specifications control for log population, log GDP, and log registered lawyers; government-win columns additionally control for log court caseload.",
+      "CS observation counts report the estimator's effective sample and can differ from TWFE columns when cities first treated in the initial sample period are excluded.",
       "Standard errors clustered by city.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -454,7 +451,7 @@ build_lawyer_share_appendix_table <- function(results_list, file_path) {
     "\\addlinespace",
     paste("Observations &", paste(obs_row, collapse = " & "), "\\\\"),
     paste("$R^2$ &", paste(r2_row, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
+    paste("City Controls &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("City Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     paste("Year Fixed Effects &", paste(rep("Yes", 6), collapse = " & "), "\\\\"),
     "\\bottomrule",
@@ -508,20 +505,6 @@ main <- function() {
       cs_se = cs_coef$se,
       cs_pre_p = cs_pre_p,
       file_path = file.path(figure_dir, sprintf("%s_event_study.pdf", outcome_name))
-    )
-
-    build_event_study_table(
-      plot_dt = plot_dt,
-      outcome_label = outcome_specs[[outcome_name]]$label,
-      cs_att = cs_coef$estimate,
-      cs_se = cs_coef$se,
-      cs_pre_p = cs_pre_p,
-      file_path = file.path(table_dir, sprintf("%s_event_study_table.tex", outcome_name)),
-      file_label = sprintf("%s_event_study", outcome_name),
-      caption = sprintf(
-        "Event-Study Estimates Behind the City-Year %s Figure",
-        outcome_specs[[outcome_name]]$label
-      )
     )
   }
 

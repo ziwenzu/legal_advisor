@@ -4,7 +4,7 @@ This folder keeps the analysis scripts for the full closed analysis package.
 
 Related outputs are grouped in one script only when they come from the same estimation family and the same input dataset.
 
-The `output/...` paths listed below are the files each script generates when run. The closed package does not keep a stored `output/` directory by default.
+The `output/...` paths listed below are the files each script generates when run. They are stored in this closed package and can be recreated by rerunning the corresponding script.
 
 ### City-Year Family
 

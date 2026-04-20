@@ -107,7 +107,6 @@ main <- function() {
 
   estimate_sunab <- function(outcome) {
     panel_sa <- copy(panel)
-    panel_sa[ever_treated == 0L, first_treat_year := 10000L]
     f <- as.formula(sprintf(
       "%s ~ sunab(first_treat_year, year) + log_population_10k + log_gdp + log_registered_lawyers + log_court_caseload_n | city_id + year",
       outcome
@@ -165,7 +164,7 @@ main <- function() {
     "\\footnotesize",
     paste(
       "\\item \\textit{Note:} Panel A outcomes are the within-city-year share of cases that are withdrawn (row 1) or that end without a judgment on the merits (row 2).",
-      "Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the residual category that is omitted to avoid collinearity.",
+      "Panel B outcomes are six cause-group shares of administrative cases at the city-year; the six shares are not independent because they sum to one minus the omitted residual categories administrative acts and economic and resource regulation.",
       "Panel C re-estimates the three headline outcomes with the Sun and Abraham (2021) interaction-weighted estimator.",
       "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
       "Standard errors clustered by city.",

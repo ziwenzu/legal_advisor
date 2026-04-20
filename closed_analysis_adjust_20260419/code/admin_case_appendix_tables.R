@@ -38,103 +38,6 @@ fmt_int <- function(x) {
   format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
-build_court_level_table <- function(admin_dt, city_dt, file_path) {
-  cy_keys <- city_dt[, .(province, city, year, treatment,
-                         log_population_10k, log_gdp,
-                         log_registered_lawyers, log_court_caseload_n)]
-
-  admin_dt[, court_level_grouped := fifelse(
-    court_level %in% c("intermediate", "high", "specialized"),
-    "intermediate_plus", "basic"
-  )]
-  agg <- admin_dt[
-    ,
-    .(
-      gov_win_rate = mean(government_win, na.rm = TRUE),
-      case_n = .N
-    ),
-    by = .(province, city, year, court_level_grouped)
-  ]
-  panel <- agg[cy_keys, on = c("province", "city", "year"), nomatch = NULL]
-  panel[, city_name := sprintf("%s_%s", province, city)]
-  panel[, city_id := .GRP, by = city_name]
-
-  estimate_for <- function(level_key) {
-    sub <- panel[court_level_grouped == level_key & case_n >= 1]
-    if (nrow(sub) < 10) {
-      return(list(estimate = NA_real_, se = NA_real_, p_value = NA_real_,
-                  n_obs = 0L, r2 = NA_real_))
-    }
-    model <- feols(
-      gov_win_rate ~ treatment + log_population_10k + log_gdp +
-        log_registered_lawyers + log_court_caseload_n |
-        city_id + year,
-      data = sub,
-      cluster = ~ city_id
-    )
-    ct <- as.data.table(coeftable(model), keep.rownames = "term")
-    row <- ct[term == "treatment"]
-    list(
-      estimate = row[["Estimate"]],
-      se = row[["Std. Error"]],
-      p_value = row[["Pr(>|t|)"]],
-      n_obs = nobs(model),
-      r2 = fitstat(model, "r2")[[1]]
-    )
-  }
-
-  basic <- estimate_for("basic")
-  inter <- estimate_for("intermediate_plus")
-
-  coef_cells <- c(
-    paste0(fmt_num(basic$estimate), stars(basic$p_value)),
-    paste0(fmt_num(inter$estimate), stars(inter$p_value))
-  )
-  se_cells <- c(
-    paste0("(", fmt_num(basic$se), ")"),
-    paste0("(", fmt_num(inter$se), ")")
-  )
-  obs_cells <- c(fmt_int(basic$n_obs), fmt_int(inter$n_obs))
-  r2_cells <- c(fmt_num(basic$r2), fmt_num(inter$r2))
-
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\setlength{\\abovecaptionskip}{0pt}",
-    "\\centering",
-    "\\caption{Effect of Legal Counsel Procurement by Court Level}",
-    "\\label{tab:admin_by_court_level}",
-    "\\begin{threeparttable}",
-    "\\begin{tabular}{lcc}",
-    "\\toprule",
-    " & (1) & (2) \\\\",
-    "Court Level & Basic People's Courts & Intermediate and Above \\\\",
-    "\\midrule",
-    paste("Treatment $\\times$ Post &", paste(coef_cells, collapse = " & "), "\\\\"),
-    paste("&", paste(se_cells, collapse = " & "), "\\\\"),
-    "\\addlinespace",
-    paste("Observations &", paste(obs_cells, collapse = " & "), "\\\\"),
-    paste("$R^2$ &", paste(r2_cells, collapse = " & "), "\\\\"),
-    paste("Controls (city-year) &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("City Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    paste("Year Fixed Effects &", paste(rep("Yes", 2), collapse = " & "), "\\\\"),
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\begin{tablenotes}[flushleft]",
-    "\\footnotesize",
-    paste(
-      "\\item \\textit{Note:} Each column reports Treatment $\\times$ Post from a two-way fixed-effects regression on a (city $\\times$ year) panel restricted to cases heard at the indicated level of court.",
-      "Outcome is the within-city-year share of administrative cases at that court level in which the government prevailed.",
-      "City-year controls: log population, log GDP, log registered lawyers, log court caseload.",
-      "Standard errors clustered by city.",
-      "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
-    ),
-    "\\end{tablenotes}",
-    "\\end{threeparttable}",
-    "\\end{table}"
-  )
-  writeLines(lines, con = file_path)
-}
-
 balance_rows <- function(treated_dt, control_dt, vars, var_labels) {
   rows <- lapply(vars, function(v) {
     t_vals <- as.numeric(treated_dt[[v]])
@@ -306,6 +209,7 @@ build_balance_table <- function(city_dt, firm_dt, file_path) {
       "\\item \\textit{Note:} Panel A pools city-year observations from cities that eventually adopt procurement, restricted to years strictly before each city's first procurement year, against city-year observations from never-procuring cities.",
       "Panel B pools firm-year observations from procurement winners against runner-up control firms within the same procurement stack, restricted to event time strictly less than zero.",
       "Difference is Treated minus Control; Normalized Difference divides by the pooled cross-group standard deviation.",
+      "Panel B observations are firm-year cells; the two-sample $t$-tests treat those cells as independent, and distinct-firm counts are reported separately.",
       "$p$-values from two-sample $t$-tests with unequal variances.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
@@ -326,9 +230,6 @@ main <- function() {
     firm_dt = firm_dt,
     file_path = file.path(table_dir, "pre_procurement_balance_appendix_table.tex")
   )
-
-  old_path <- file.path(table_dir, "admin_pre_procurement_balance_appendix_table.tex")
-  if (file.exists(old_path)) file.remove(old_path)
 }
 
 main()

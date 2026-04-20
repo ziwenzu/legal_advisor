@@ -113,12 +113,14 @@ entropy_balance <- function(city_dt, vars) {
   z <- z - max(z)
   w <- exp(z)
   w <- w / sum(w) * nrow(treated)
+  cat("entropy-balance final loss:", sprintf("%.8f", best$value), "\n")
   city_dt[, eb_weight := 1.0]
   city_dt[ever_treated == 0L, eb_weight := as.numeric(w)]
   city_dt[]
 }
 
 attach_weights <- function(panel, city_dt) {
+  # Weights are estimated at the city level and replicated to each city-year row.
   weights <- city_dt[, .(city_id, pscore, ipw_weight, eb_weight)]
   panel <- merge(panel, weights, by = "city_id", all.x = TRUE, sort = FALSE)
   panel[]

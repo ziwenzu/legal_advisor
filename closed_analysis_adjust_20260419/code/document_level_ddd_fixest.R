@@ -13,7 +13,7 @@ get_root_dir <- function() {
 }
 
 root_dir <- get_root_dir()
-input_file <- file.path(root_dir, "data", "document_level_winner_vs_loser_ddd.csv")
+input_file <- file.path(root_dir, "data", "document_level_winner_vs_loser.csv")
 table_dir <- file.path(root_dir, "output", "tables")
 output_tag <- Sys.getenv("DOCUMENT_DDD_OUTPUT_TAG", unset = "")
 
@@ -75,17 +75,23 @@ read_document_panel <- function(path) {
   dt[, prior_admin_gov_exposure := as.integer(prior_admin_gov_exposure)]
   dt[, has_pre_admin_civil_case_in_court := as.integer(has_pre_admin_civil_case_in_court)]
 
-  dt[, exposed_pair_has_pre_civil_support := as.integer(
+  dt[, ddd_support_row := as.integer(
     prior_admin_gov_exposure == 0L | has_pre_admin_civil_case_in_court == 1L
   )]
   dt[, ddd_binary := did_treatment * prior_admin_gov_exposure]
 
-  dt[, lawyer_female := fifelse(lawyer_gender == "女", 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_gender := as.integer(lawyer_gender)]
+  dt[, lawyer_edu := as.integer(lawyer_edu)]
+
+  dt[, lawyer_female := as.integer(lawyer_gender == 1L)]
   dt[, lawyer_ccp_bin := fifelse(lawyer_ccp == 1, 1L, 0L, na = NA_integer_)]
-  dt[, lawyer_high_edu := fifelse(lawyer_edu %chin% c("master", "PhD"), 1L, 0L, na = NA_integer_)]
+  dt[, lawyer_high_edu := as.integer(lawyer_edu >= 4L)]
   dt[, lawyer_gender_group := fifelse(is.na(lawyer_female), "unknown", fifelse(lawyer_female == 1L, "female", "male"))]
   dt[, lawyer_ccp_group := fifelse(is.na(lawyer_ccp_bin), "unknown", fifelse(lawyer_ccp_bin == 1L, "ccp", "nonccp"))]
   dt[, lawyer_edu_group := fifelse(is.na(lawyer_high_edu), "unknown", fifelse(lawyer_high_edu == 1L, "highedu", "baselineedu"))]
+  if (!any(dt$lawyer_female == 1L, na.rm = TRUE)) {
+    stop("lawyer_female contains no female observations after UTF-8 decoding")
+  }
 
   practice_mean <- mean(dt$lawyer_practice_years, na.rm = TRUE)
   practice_sd <- sd(dt$lawyer_practice_years, na.rm = TRUE)
@@ -131,9 +137,9 @@ build_formula <- function(outcome_name) {
 
 build_sample_filter <- function(base_filter = NULL) {
   if (is.null(base_filter)) {
-    quote(exposed_pair_has_pre_civil_support == 1L)
+    quote(ddd_support_row == 1L)
   } else {
-    bquote((.(base_filter)) & exposed_pair_has_pre_civil_support == 1L)
+    bquote((.(base_filter)) & ddd_support_row == 1L)
   }
 }
 
@@ -307,7 +313,7 @@ write_latex_table <- function(results) {
     paste("Stack $\\times$ Year Fixed Effects &", yes_row, "\\\\"),
     paste("Court $\\times$ Year Fixed Effects &", yes_row, "\\\\"),
     paste("Cause $\\times$ Side Fixed Effects &", yes_row, "\\\\"),
-    paste("Controls (case-level) &", yes_row, "\\\\"),
+    paste("Case Controls &", yes_row, "\\\\"),
     paste("Year $\\times$ Gender Fixed Effects &", yes_row, "\\\\"),
     paste("Year $\\times$ Party Membership Fixed Effects &", yes_row, "\\\\"),
     paste("Year $\\times$ Education Fixed Effects &", yes_row, "\\\\"),
@@ -321,6 +327,7 @@ write_latex_table <- function(results) {
       "The sample retains firm-court-case rows where the firm either has no prior administrative-litigation appearance for the government in that court, or already handled civil cases there before any government-side appearance.",
       "Identification of the triple interaction comes from the rows with positive prior administrative exposure.",
       "Case controls: opposing-counsel presence and plaintiff/defendant entity status.",
+      "Year-by-lawyer-attribute fixed effects for gender, party membership, and education absorb time-specific shocks within each lawyer cohort.",
       "Standard errors clustered by firm and court.",
       "$^{*}p<0.10$, $^{**}p<0.05$, $^{***}p<0.01$."
     ),
